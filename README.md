@@ -1,93 +1,234 @@
-# KinoBot
+# Kuku Bot — Django + python-telegram-bot
 
+Tezkor, modulli va **webhook** orqali ishlaydigan Telegram bot loyihasi. Loyihada Django (DRF), Celery, Redis va `python-telegram-bot` (v21, async) ishlatiladi. Ushbu README aynan siz bergan zip dagi **mavjud kod** va funksiyalar asosida yozildi.
 
+> **Asosiy g‘oya:** Bitta Django ilovasi ichida bir nechta botlarni yuritish, foydalanuvchilarni va kanal obunalarini boshqarish, ma’muriy (admin) imkoniyatlar (ommalashtirish/broadcast, statistikalar, zaxira nusxa), ko‘p tillilik va Swagger hujjatlari.
 
-## Getting started
+---
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+## 📁 Loyihaning tuzilishi (asosiy fayllar)
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.com/ginzapro/kinobot.git
-git branch -M main
-git push -uf origin main
+Kuku_Bot/
+├─ apps/
+│  └─ common_bot/
+│     ├─ admin.py                # Admin paneli: Bot, User, SubscribeChannel, Broadcast, ...
+│     ├─ keyboard.py             # Inline/Reply klaviatura generatorlari
+│     ├─ models.py               # Bot, User, SubscribeChannel, Broadcast, BroadcastRecipient, Location
+│     ├─ tasks.py                # Celery vazifalari (broadcast yuborish)
+│     ├─ translation.py          # Matnlar va tugmalar (uz/ru/en/tr)
+│     ├─ urls.py                 # /api/bot/<token> webhooks
+│     ├─ webhook.py              # Telegram webhook qabul qiluvchi view
+│     └─ handler.py / views.py   # /start, /help, /broadcast, /stats, /backup_db va h.k.
+│
+├─ core/
+│  ├─ celery.py                  # Celery konfiguratsiyasi
+│  ├─ settings/
+│  │  ├─ base.py                 # Asosiy sozlamalar (.env orqali)
+│  │  ├─ develop.py              # Dev rejimi (CELERY_TASK_ALWAYS_EAGER=True)
+│  │  └─ production.py           # Prodga mos patch
+│  ├─ swagger/                   # drf-yasg sozlamalari
+│  ├─ urls.py                    # admin, rosetta, __debug__, api/, swagger/
+│  └─ views.py                   # index va yordamchi viewlar
+│
+├─ manage.py
+├─ requirements/
+│  └─ base.txt                   # Kutubxonalar (Django, DRF, PTB v21, Celery, Redis, ...)
+└─ db.sqlite3                    # Dev rejim uchun standart baza
 ```
 
-## Integrate with your tools
+---
 
-- [ ] [Set up project integrations](https://gitlab.com/ginzapro/kinobot/-/settings/integrations)
+## ✨ Mavjud funksiyalar
 
-## Collaborate with your team
+### Botlar va webhook
+- **Bot modeli (`apps.common_bot.models.Bot`)**: `token` kiritsangiz, saqlash chog‘ida botning **nomi/username** Telegram API dan olinadi va **webhook** avtomatik o‘rnatiladi.
+- **Webhook endpoint**: `POST /api/bot/<token>` — barcha Telegram yangilanishlari shu URL ga keladi.
+- **Webhook URL** `settings.WEBHOOK_URL` orqali olinadi va har bir bot uchun `WEBHOOK_URL + "/api/bot/<token>"` tarzida o‘rnatiladi.
+- **Management command**: `python manage.py webhook` — bazadagi barcha botlar uchun webhookni qayta o‘rnatish.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### Majburiy kanal(lar)ga obuna
+- **SubscribeChannel** modeli: kanal `username` va `channel_id` bilan saqlanadi.
+- Admin panelda kanal qo‘shilganda **botning kanalga adminligi** tekshiriladi (formada `check_bot_is_admin_in_channel`).
+- Botdagi harakatlar oldidan **obuna tekshiruvi** ishlaydi; foydalanuvchiga kanal ro‘yxati va **“Obunani tekshirish”** tugmasi ko‘rsatiladi.
 
-## Test and Deploy
+### Foydalanuvchilar va til
+- **User** modeli: `telegram_id`, `is_admin`, `left`, `selected_language` (uz/ru/en/tr) kabilar saqlanadi.
+- **/start**: agar til tanlanmagan bo‘lsa — inline tillar (🇺🇿 🇷🇺 🇬🇧 🇹🇷). Tanlangan bo‘lsa — asosiy menyuga o‘tadi.
+- Matnlar va tugmalar **translation.py** dan olinadi — foydalanuvchining tanlangan tiliga mos ko‘rinadi.
 
-Use the built-in continuous integration in GitLab.
+### Admin imkoniyatlari
+- **/admin**: yashirin admin menyu (matnlar `translation.py` da).
+- **/broadcast**: ommaviy xabar yuborish dialogi (tasdiqlash bilan). Xabarlar Celery orqali **BroadcastRecipient** lar bo‘yicha yuboriladi, har birining holati (`PENDING/SENT/FAILED`) qayd etiladi.
+- **/stats**: foydalanuvchilar soni, so‘nggi 24 soat faol bo‘lganlar va h.k.
+- **/export_users**: `users.csv` ni generatsiya qilib yuboradi.
+- **/backup_db**: bazaning zaxira nusxasini yaratish (sqlite/postgresga mos ketma-ketlik kiritilgan).
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### Lokatsiya
+- **/ask_location** → foydalanuvchidan lokatsiya so‘rash, yuborilgan lokatsiyalar **Location** modelida saqlanadi.
 
-***
+### Swagger hujjatlar
+- **Swagger/Redoc**: `/<project>/swagger/`, `/<project>/redoc/` (aniq URL: `core/swagger/schema.py`). Asosiy UI: **`/swagger/`**.
 
-# Editing this README
+---
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+## 🚀 O‘rnatish (Dev)
 
-## Suggestions for a good README
+### Talablar
+- Python **3.10+** (tavsiya 3.11)
+- (Dev) SQLite avtomatik ishlaydi
+- (Prod) PostgreSQL va Redis
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+### 1) Repo va kutubxonalar
+```bash
+git clone <repo-url>
+cd Kuku_Bot
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+pip install -r requirements/base.txt
+```
 
-## Name
-Choose a self-explaining name for your project.
+### 2) .env
+`.env` faylini loyihaning ildizida (Kuku_Bot ichida) yarating:
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+```env
+# Django
+DJANGO_SETTINGS_MODULE=core.settings.develop
+SECRET_KEY=change_me
+DEBUG=1
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+# Webhook bazaviy URL (tunnel yoki domeningiz)
+WEBHOOK_URL=https://<your-domain-or-tunnel>
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+# Celery/Redis (dev uchun ixtiyoriy)
+CELERY_BROKER_URL=redis://localhost:6379
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+> `develop.py` rejimida Celery **eager** ishlaydi (ya’ni worker majburiy emas).
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### 3) Migratsiyalar va superuser
+```bash
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver 0.0.0.0:8000
+```
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+### 4) Admin paneldan Bot qo‘shish
+1. `/admin` ga kiring → **Bots** → **Add**.
+2. **token** ni kiriting va saqlang — bot nomi/username to‘ldiriladi, webhook avtomatik o‘rnatiladi.
+3. Agar kerak bo‘lsa: `python manage.py webhook` bilan ham eslatib o‘tishingiz mumkin.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+### 5) Majburiy kanallar
+- `/admin` → **Subscribe channels** → **Add** qiling (username, channel_id).
+- Saqlashda botning **kanalga adminligi** avtomatik tekshiriladi.
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+---
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## 🧩 Ishga tushirish (Prod)
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+`.env` ni prod uchun moslang (PostgreSQL + Redis + DEBUG=0):
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+```env
+DJANGO_SETTINGS_MODULE=core.settings.base
+SECRET_KEY=<strong_random_key>
+DEBUG=0
 
-## License
-For open source projects, say how it is licensed.
+# Postgres
+DB_ENGINE=django.db.backends.postgresql_psycopg2
+DB_NAME=<db_name>
+DB_USER=<db_user>
+DB_PASSWORD=<db_password>
+DB_HOST=<db_host>
+DB_PORT=5432
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+# Redis/Celery
+CELERY_BROKER_URL=redis://redis:6379
+
+# Webhook bazaviy URL (https kerak)
+WEBHOOK_URL=https://<your-domain>
+```
+
+Keyin:
+
+```bash
+python manage.py collectstatic --noinput
+python manage.py migrate
+
+# Django
+gunicorn core.wsgi:application --bind 0.0.0.0:8000
+
+# Celery worker va beat
+celery -A core worker -l info
+celery -A core beat -l info
+
+# Botlar uchun webhook
+python manage.py webhook
+```
+
+> **Eslatma:** Webhook endpoint — `https://<your-domain>/api/bot/<BOT_TOKEN>`.
+`WEBHOOK_URL` faqat **bazaviy** URL bo‘lishi kerak (endpoint qo‘shmang) — kod o‘zi to‘g‘ri formatlab beradi.
+
+---
+
+## 🔐 Admin rollari
+- Foydalanuvchini admin qilish uchun `/admin` → **Users** dan kerakli `User` yozuvini topib **is_admin** ni yoqing.
+- Adminlar `/admin`, `/broadcast`, `/stats`, `/export_users`, `/backup_db` kabi buyruqlardan foydalana oladi.
+
+---
+
+## 🗣️ Ko‘p tillilik
+- `translation.py` ichida barcha matnlar mavjud (🇺🇿 🇷🇺 🇬🇧 🇹🇷).
+- `/start` bosilgach odam til tanlamagan bo‘lsa — inline tugmalar chiqadi. Tanlanganidan so‘ng barcha matnlar va tugmalar shu tilga mos ko‘rinadi.
+
+---
+
+## 📊 Broadcast qanday ishlaydi?
+1. Admin `/broadcast` ni ishga tushiradi.
+2. Bot xabar matnini qabul qiladi → tasdiqlash (inline) so‘raydi.
+3. Tasdiqlansa — **Celery** ishga tushadi: barcha **User** lar bo‘yicha **BroadcastRecipient** yozuvlari yaratiladi va xabar yuboriladi.
+4. Har bir qabul qiluvchi uchun holat: **PENDING → SENT/FAILED**. Failed larni admin paneldan qayta navbatga qo‘yish aksiyasi bor.
+
+---
+
+## 🔌 Swagger / Rosetta / Debug toolbar
+- Swagger UI: **`/swagger/`**
+- Redoc: **`/redoc/`**
+- Rosetta (i18n): **`/rosetta/`**
+- Django Debug Toolbar: **`/__debug__/`**
+
+---
+
+## ❗Muammolar va yechimlar
+
+- **Webhook setWebhook xatosi**: `WEBHOOK_URL` to‘g‘ri va tashqi dunyodan HTTPS bilan ochiq bo‘lishi shart (ngrok/jprq/Cloudflare Tunnel).
+- **Kanal adminligi xatosi**: SubscribeChannel saqlanganda chiqsa — botni kanalingizda **Admin** qiling, so‘ngra qayta saqlang.
+- **Broadcast yubormayapti**: prod rejimda Celery **worker** va **beat** ishga tushganini tekshiring; Redis ulanishi to‘g‘ri ekanligiga ishonch hosil qiling.
+- **Til o‘zgarmayapti**: `translation.py` dagi kalitlar va handlerlarda tilni aniqlash qismiga e’tibor bering; userning `selected_language` maydoni yangilanayotganini tekshiring.
+
+---
+
+## 🧪 Tez start (lokal, dev)
+```bash
+# 1) Venv va o‘rnatish
+pip install -r requirements/base.txt
+
+# 2) .env (develop)
+echo "DJANGO_SETTINGS_MODULE=core.settings.develop
+SECRET_KEY=dev_key
+DEBUG=1
+WEBHOOK_URL=https://example-tunnel.local
+CELERY_BROKER_URL=redis://localhost:6379" > .env
+
+# 3) Migratsiya va ishga tushirish
+python manage.py migrate
+python manage.py runserver 0.0.0.0:8000
+
+# 4) Admin panel: Bot qo‘shing (token), SubscribeChannel kiriting
+# 5) Chatda /start ni bosing
+```
+
+---
+
+## 📄 Litsenziya
+Loyihadagi kodlar egasiga tegishli. Ichki ehtiyoj uchun foydalanyapsiz — mualliflik huquqlarini hurmat qiling.
+
