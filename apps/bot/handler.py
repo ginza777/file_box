@@ -1,72 +1,85 @@
-# handler.py (YANGI, BOTSIZ ISHLAYDIGAN VERSIYA)
+# handler.py
 
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    filters, ConversationHandler,
 )
 
-# Funksiyalarni to'g'ri import qilish
 from .views import (
-    start, about, help, share_bot, ask_language, language_choice_handle,
-    admin, stats, backup_db, export_users, ask_for_location, location_handler,
-    secret_level, check_subscription_channel,
-    # Suhbat uchun yangi funksiyalar
+    start, ask_language, language_choice_handle,
+    toggle_search_mode, help_handler, about_handler, share_bot_handler,
+    main_text_handler, handle_search_pagination, send_file_by_callback
+)
+from .admin_views import (
+    admin_panel, stats, backup_db, export_users, secret_level,
+    ask_location, location_handler  # YANGI FUNKSIYALARNI IMPORT QILAMIZ
+)
+from .broadcast_views import (
     start_broadcast_conversation, receive_broadcast_message,
     cancel_broadcast_conversation, handle_broadcast_confirmation,
-    # Suhbat holatlari
     AWAIT_BROADCAST_MESSAGE
+)
+from .translation import (
+    search, deep_search, help_text, about_us,
+    share_bot_button, change_language, admin_button_text, text as restart_text
 )
 
 telegram_applications = {}
 
 
 def get_application(token: str) -> Application:
-    """
-    Bot tokeni uchun Telegram Application obyektini yaratadi yoki keshdan qaytaradi.
-    """
     if token not in telegram_applications:
         application = Application.builder().token(token).build()
 
-        # Reklama yuborish uchun ConversationHandler
-        # Endi `inject_bot_instance` ishlatilmaydi.
-        broadcast_conversation_handler = ConversationHandler(
+        broadcast_conv = ConversationHandler(
             entry_points=[CommandHandler("broadcast", start_broadcast_conversation)],
-            states={
-                AWAIT_BROADCAST_MESSAGE: [
-                    MessageHandler(~filters.COMMAND, receive_broadcast_message)
-                ],
-            },
+            states={AWAIT_BROADCAST_MESSAGE: [MessageHandler(~filters.COMMAND, receive_broadcast_message)]},
             fallbacks=[CommandHandler("cancel", cancel_broadcast_conversation)],
         )
 
-        # Barcha handlerlar endi to'g'ridan-to'g'ri, wrappersiz yoziladi.
-        # Foydalanuvchini tekshirish va yaratish logikasi endi `views.py`dagi
-        # funksiyalarga qo'yilgan `@update_or_create_user` dekoratori orqali ishlaydi.
+        all_button_texts = [
+            *search.values(), *deep_search.values(), *help_text.values(),
+            *about_us.values(), *share_bot_button.values(), *change_language.values(),
+            admin_button_text, *restart_text.values()
+        ]
+        button_filter = filters.Text(all_button_texts)
+
         handlers = [
+            broadcast_conv,
+
+            # --- Aniq Buyruqlar ---
             CommandHandler("start", start),
-            MessageHandler(filters.TEXT & filters.Regex(r"^(перезапуск|restart|boshlash|yeniden başlat)$"), start),
-            CommandHandler("about", about),
-            MessageHandler(filters.TEXT & filters.Regex(r"^📞 (Biz haqimizda|О_нас|About Us|Hakkımızda)$"), about),
-            CommandHandler("help", help),
-            MessageHandler(filters.TEXT & filters.Regex(r"^📚 (Help|Помощь|Yordam|Yardım)$"), help),
-            MessageHandler(filters.TEXT & filters.Regex(r"^📤 (Share Bot|Поделиться ботом|Botni ulashish|Botu paylaş)$"), share_bot),
+            CommandHandler("help", help_handler),
+            CommandHandler("about", about_handler),
             CommandHandler("language", ask_language),
-            MessageHandler(
-                filters.TEXT & filters.Regex(r"^🌍 (Tilni o'zgartirish|Изменить язык|Change Language|Dil değiştir)$"),
-                ask_language),
-            CallbackQueryHandler(language_choice_handle, pattern="^language_setting_"),
-            MessageHandler(filters.TEXT & filters.Regex(r"^Admin 🤖"), admin),
+
+            # --- Admin Buyruqlari ---
+            CommandHandler("admin", admin_panel),
             CommandHandler("stats", stats),
-            CommandHandler("admin", admin),
             CommandHandler("backup_db", backup_db),
             CommandHandler("export_users", export_users),
-            CommandHandler("ask_location", ask_for_location),
-            MessageHandler(filters.LOCATION, location_handler),
-            CallbackQueryHandler(secret_level, pattern="^SCRT_LVL"),
-            CallbackQueryHandler(check_subscription_channel, pattern="^check_subscription"),
+            CommandHandler("ask_location", ask_location),  # /ask_location BUYRUG'I QO'SHILDI
 
-            # --- Reklama uchun ConversationHandler ---
-            broadcast_conversation_handler,
-            CallbackQueryHandler(handle_broadcast_confirmation, pattern="^brdcast_")
+            # --- Callback So'rovlari ---
+            CallbackQueryHandler(handle_broadcast_confirmation, pattern="^brdcast_"),
+            CallbackQueryHandler(handle_search_pagination, pattern="^search_"),
+            CallbackQueryHandler(send_file_by_callback, pattern="^getfile_"),
+            CallbackQueryHandler(language_choice_handle, pattern="^language_setting_"),
+            CallbackQueryHandler(secret_level, pattern="^SCRT_LVL"),
+
+            # --- Tugmalar va Maxsus Xabar Turlari ---
+            MessageHandler(filters.Regex(f"^({'|'.join(search.values())}|{'|'.join(deep_search.values())})$"),
+                           toggle_search_mode),
+            MessageHandler(filters.Regex(f"^({'|'.join(help_text.values())})$"), help_handler),
+            MessageHandler(filters.Regex(f"^({'|'.join(about_us.values())})$"), about_handler),
+            MessageHandler(filters.Regex(f"^({'|'.join(share_bot_button.values())})$"), share_bot_handler),
+            MessageHandler(filters.Regex(f"^({'|'.join(change_language.values())})$"), ask_language),
+            MessageHandler(filters.Text(admin_button_text), admin_panel),
+            MessageHandler(filters.Regex(f"^({'|'.join(restart_text.values())})$"), start),
+            MessageHandler(filters.LOCATION, location_handler),  # YUBORILGAN LOKATSIYANI QABUL QILUVCHI HANDLER
+
+            # --- Qolgan barcha matnli xabarlar (Qidiruv) ---
+            MessageHandler(filters.TEXT & ~filters.COMMAND & ~button_filter, main_text_handler),
         ]
 
         application.add_handlers(handlers)

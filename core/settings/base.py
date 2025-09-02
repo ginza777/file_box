@@ -36,7 +36,7 @@ INSTALLED_APPS = [
     "rosetta",
     # local
     "apps.bot.apps.CommonConfig",
-
+    "apps.multiparser",  # <-- Added multiparser app
 ]
 
 REST_FRAMEWORK = {

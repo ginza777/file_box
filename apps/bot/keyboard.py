@@ -1,10 +1,6 @@
-from asgiref.sync import sync_to_async
-from telegram import Bot
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
-from telegram.error import BadRequest
-
-from . import translation
-from .models import SubscribeChannel
+from telegram import ReplyKeyboardMarkup, KeyboardButton
+from telegram import InlineKeyboardMarkup
+from telegram import ReplyKeyboardMarkup, KeyboardButton
 
 
 def language_list_keyboard():
@@ -24,15 +20,8 @@ def language_list_keyboard():
 
 
 def restart_keyboard(lang) -> ReplyKeyboardMarkup:
-    text = {
-        "uz": "boshlash",
-        "en": "restart",
-        "ru": "перезапуск",
-        "tr": "yeniden başlat"
-    }
-
     buttons = [
-        [KeyboardButton(text[lang])]
+        [KeyboardButton(translation.text[lang])]
     ]
 
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
@@ -105,45 +94,6 @@ def share_bot_keyboard(lang) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
-def default_keyboard(lang, admin=False) -> ReplyKeyboardMarkup:
-    change_language = {
-        "uz": "🌍 Tilni o'zgartirish",
-        "ru": "🌍 Изменить язык",
-        "en": "🌍 Change Language",
-        "tr": "🌍 Dil değiştir"
-    }
-    help = {
-        "uz": "📚 Yordam",
-        "ru": "📚 Помощь",
-        "en": "📚 Help",
-        "tr": "📚 Yardım"
-    }
-    share_bot = {
-        "uz": "📤 Botni ulashish",
-        "ru": "📤 Поделиться ботом",
-        "en": "📤 Share Bot",
-        "tr": "📤 Botu paylaş"
-    }
-
-    about_us = {
-        "uz": "📞 Biz haqimizda",
-        "ru": "📞 О_нас",
-        "en": "📞 About Us",
-        "tr": "📞 Hakkımızda"
-    }
-
-    buttons = [
-        # Random movie
-        [KeyboardButton(change_language[lang]), KeyboardButton(help[lang])],
-        # Share the bot
-        [KeyboardButton(share_bot[lang]), KeyboardButton(about_us[lang])]
-
-    ]
-    if admin:
-        buttons.append([KeyboardButton(translation.admin_button_text)])
-    return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
-
-
 def make_keyboard_for_about_command(lang, admin=False) -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton(translation.admin_button_text, url="https://t.me/@sherzamon_m")]
@@ -165,15 +115,29 @@ def make_keyboard_for_help_command() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(buttons)
 
 
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
+from asgiref.sync import sync_to_async
+from .models import SubscribeChannel
+from . import translation
+
+
 async def keyboard_checked_subscription_channel(user_id, bot):
-    channels = await sync_to_async(list)(SubscribeChannel.objects.filter(active=True))
+    # --- O'ZGARTIRILGAN QISM ---
+    # .select_related('bot') qo'shildi. Bu SubscribeChannel obyektlari bilan birga
+    # ularga bog'liq bo'lgan Bot obyektlarini ham bitta so'rovda yuklab oladi.
+    channels_query = SubscribeChannel.objects.select_related('bot').filter(active=True)
+    channels = await sync_to_async(list)(channels_query)
+    # --- O'ZGARTIRISH TUGADI ---
+
     buttons = []
     is_subscribed = True
 
     for idx, channel in enumerate(channels):
         try:
-            # Telegram Bot obyekti yaratish
-            token = channel.token
+            # Endi channel.bot.token murojaati yangi DB so'rovini yubormaydi,
+            # chunki 'bot' obyekti oldindan yuklab olingan.
+            token = channel.bot.token
             bot_instance = Bot(token=token)
 
             # Foydalanuvchining obunachiligini tekshirish
@@ -191,7 +155,7 @@ async def keyboard_checked_subscription_channel(user_id, bot):
         buttons.append([
             InlineKeyboardButton(
                 text=f"Channel {idx + 1} {subscription_status}",
-                url=channel.channel_link if channel.private else f"https://t.me/{channel.channel_username}"
+                url=channel.get_channel_link  # Model property ishlatilgani yaxshiroq
             )
         ])
         if not subscribed:
@@ -230,4 +194,46 @@ def keyboard_check_subscription_channel() -> InlineKeyboardMarkup:
         ]
     ]
 
+    return InlineKeyboardMarkup(buttons)
+
+
+def default_keyboard(lang, admin=False) -> ReplyKeyboardMarkup:
+    buttons = [
+        [KeyboardButton(translation.search[lang]), KeyboardButton(translation.deep_search[lang])],
+        [KeyboardButton(translation.change_language[lang]), KeyboardButton(translation.help_text[lang])],
+        [KeyboardButton(translation.share_bot_button[lang]), KeyboardButton(translation.about_us[lang])]
+    ]
+    if admin:
+        buttons.append([KeyboardButton(translation.admin_button_text)])
+    return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
+
+
+def build_search_results_keyboard(page_obj, files_on_page, search_mode, language):
+    buttons = []
+    # Build file buttons with a short callback data
+    for file in files_on_page:
+        buttons.append([InlineKeyboardButton(f"📄 {file.title}", callback_data=f"getfile_{file.id}")])
+
+    # Add pagination buttons
+    pagination_buttons = []
+    if page_obj.has_previous():
+        prev_page = page_obj.previous_page_number()
+        # The callback data is now short and does not include the query text
+        pagination_buttons.append(
+            InlineKeyboardButton(translation.pagination_prev[language],
+                                 callback_data=f"search_{search_mode}_{prev_page}")
+        )
+
+    current_page_text = f"Page {page_obj.number}/{page_obj.paginator.num_pages}"
+    pagination_buttons.append(InlineKeyboardButton(current_page_text, callback_data="ignore"))
+
+    if page_obj.has_next():
+        next_page = page_obj.next_page_number()
+        # The callback data is now short and does not include the query text
+        pagination_buttons.append(
+            InlineKeyboardButton(translation.pagination_next[language],
+                                 callback_data=f"search_{search_mode}_{next_page}")
+        )
+
+    buttons.append(pagination_buttons)
     return InlineKeyboardMarkup(buttons)
