@@ -1,10 +1,12 @@
 import sys
-
+import os
 import environ
 
 
 def main():
+    
     environ.Env().read_env(".env")
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings.develop')
     try:
         from django.core.management import execute_from_command_line
     except ImportError as exc:

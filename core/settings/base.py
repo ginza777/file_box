@@ -35,7 +35,7 @@ INSTALLED_APPS = [
     "corsheaders",
     "rosetta",
     # local
-    "apps.common_bot",
+    "apps.bot.apps.CommonConfig",
 
 ]
 
@@ -87,11 +87,11 @@ if not DEBUG:
     DATABASES = {
         "default": {
             "ENGINE": env.str("DB_ENGINE", "django.db.backends.postgresql_psycopg2"),
-            "NAME": env.str("DB_NAME"),
-            "USER": env.str("DB_USER"),
+            "NAME": env.str("POSTGRES_DB"),
+            "USER": env.str("POSTGRES_USER"),
             "PASSWORD": env.str("DB_PASSWORD"),
-            "HOST": env.str("DB_HOST"),
-            "PORT": env.str("DB_PORT"),
+            "HOST": env.str("POSTGRES_HOST"),
+            "PORT": env.str("POSTGRES_PORT"),
             "ATOMIC_REQUESTS": False,
         }
     }
@@ -207,3 +207,6 @@ logging.config.dictConfig({
 WEBHOOK_URL = env.str("WEBHOOK_URL", "https://bot.zamonsher.icu")
 CELERY_WEBHOOK=env.str("CELERY_WEBHOOK","False")
 APPEND_SLASH = False
+
+# Single bot token from env
+BOT_TOKEN = env.str("BOT_TOKEN", default=None)

@@ -123,58 +123,6 @@ class GetOrNoneManager(models.Manager):
             return None
 
 
-# --- Models ---
-
-
-class Bot(models.Model):
-    """
-    Represents a Telegram bot registered in the system.
-    """
-    name = models.CharField(max_length=100, blank=True, help_text=_("Auto-filled from Telegram API on save"))
-    username = models.CharField(max_length=100, blank=True, help_text=_("Auto-filled from Telegram API on save"))
-    token = models.CharField(max_length=255, unique=True, help_text=_("The unique token provided by @BotFather"))
-    webhook_url = models.URLField(max_length=255, blank=True, help_text=_("Auto-filled on save"))
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        verbose_name = _("Bot")
-        verbose_name_plural = _("Bots")
-
-    def __str__(self):
-        return self.name or self.username or _("Unnamed Bot")
-
-    def _fetch_and_set_bot_info(self):
-        """Helper method to get bot info from Telegram and set it on the model instance."""
-        self.name, self.username = get_bot_details_from_telegram(self.token)
-
-    def _register_webhook(self):
-        """Helper method to register the webhook URL with Telegram."""
-        # Muhim: settings.WEBHOOK_URL sozlamalarda mavjud bo'lishi kerak.
-        if not hasattr(settings, 'WEBHOOK_URL'):
-            raise ValidationError(_("WEBHOOK_URL is not configured in Django settings."))
-        self.webhook_url = register_bot_webhook(self.token, settings.WEBHOOK_URL)
-
-    def save(self, *args, **kwargs):
-        """
-        Overrides the default save method to fetch bot details and set the webhook.
-
-        WARNING: Performing external API calls within a model's `save` method is
-        generally discouraged as it can slow down database transactions and
-        make the save operation fail due to network issues. A better approach
-        for production systems is to use a background task (e.g., Celery)
-        or a custom admin command/action to provision a new bot.
-        """
-        is_new = self._state.adding
-        if is_new:  # Faqat yangi bot yaratilayotganda ishga tushadi
-            try:
-                self._fetch_and_set_bot_info()
-                self._register_webhook()
-            except ValidationError as e:
-                # Xatolikni to'g'ridan-to'g'ri yuqoriga uzatish,
-                # bu admin panelida xabarni ko'rsatadi.
-                raise e
-        super().save(*args, **kwargs)
 
 
 class SubscribeChannel(models.Model):
@@ -184,8 +132,6 @@ class SubscribeChannel(models.Model):
     channel_username = models.CharField(max_length=100, unique=True, null=True, blank=True)
     channel_link = models.URLField(max_length=255, blank=True, null=True)
     channel_id = models.CharField(max_length=100, unique=True)
-    bot = models.ForeignKey(Bot, on_delete=models.CASCADE, related_name="subscription_channels", null=True, blank=True,
-                            help_text=_("The bot that manages this channel."))
     active = models.BooleanField(default=True)
     private = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -207,11 +153,11 @@ class SubscribeChannel(models.Model):
             raise ValidationError(_("A private channel must have an invitation link."))
         if not self.private and not self.channel_username:
             raise ValidationError(_("A public channel must have a username."))
-        if self.bot and self.bot.token and self.channel_id:
+        if settings.BOT_TOKEN and self.channel_id:
             try:
                 # Run the async function from this sync method using asyncio.run()
                 is_admin = asyncio.run(
-                    check_bot_is_admin_in_channel(self.channel_id, self.bot.token)
+                    check_bot_is_admin_in_channel(self.channel_id, settings.BOT_TOKEN)
                 )
 
                 # Corrected Logic: Raise error if the bot is NOT an admin.
@@ -255,7 +201,6 @@ class User(models.Model):
     last_name = models.CharField(max_length=100, blank=True, null=True)
     username = models.CharField(max_length=100, blank=True, null=True)
     last_active = models.DateTimeField(auto_now=True)
-    bot = models.ForeignKey(Bot, on_delete=models.CASCADE, related_name="users")
     is_admin = models.BooleanField(default=False)
     is_blocked = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -266,12 +211,11 @@ class User(models.Model):
     left=models.BooleanField(default=False)
 
     class Meta:
-        unique_together = ('telegram_id', 'bot')
         verbose_name = _("User")
         verbose_name_plural = _("Users")
 
     def __str__(self):
-        return f"{self.full_name} ({self.telegram_id}) - Bot: {self.bot.name}"
+        return f"{self.full_name} ({self.telegram_id})"
 
     @property
     def full_name(self) -> str:
@@ -309,8 +253,6 @@ class Broadcast(models.Model):
         PENDING = 'pending', _('Pending')
         IN_PROGRESS = 'in_progress', _('In Progress')
         COMPLETED = 'completed', _('Completed')
-
-    bot = models.ForeignKey('Bot', on_delete=models.CASCADE, related_name="broadcasts")
     from_chat_id = models.BigIntegerField()
     message_id = models.BigIntegerField()
     created_at = models.DateTimeField(auto_now_add=True)

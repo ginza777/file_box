@@ -9,32 +9,24 @@ from telegram.ext import CallbackContext, ContextTypes
 
 from . import translation
 from .keyboard import keyboard_checked_subscription_channel, keyboard_check_subscription_channel
-from .models import User, SubscribeChannel, Bot
+from .models import SubscribeChannel  # Bot modelini import qilishni unutmang
+from .models import User  # Faqat User import qilinadi
+
+
+# utils.py (YANGI, BOTSIZ ISHLAYDIGAN VERSIYA)
 
 
 def update_or_create_user(func):
-    """
-    Decorator that finds or creates a user based on the update
-    and passes the user object to the handler.
-    """
+    """Foydalanuvchini bot obyektisiz yaratadi yoki yangilaydi."""
+
     @wraps(func)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
         user_data = update.effective_user
         if not user_data:
-            # Can't proceed without a user, pass to the handler if it can manage.
             return await func(update, context, *args, **kwargs)
 
-        # Get the Django Bot model instance from the context
-        bot_instance = context.bot_data.get("bot_instance")
-        if not bot_instance:
-            # This is a critical error if it happens, should be logged.
-            print(f"FATAL: bot_instance not found in context for bot {context.bot.username}")
-            return # Stop processing
-
-        # Use Django's async-native ORM method. It's clean and efficient.
         user, created = await User.objects.aupdate_or_create(
             telegram_id=user_data.id,
-            bot=bot_instance,
             defaults={
                 "first_name": user_data.first_name or "",
                 "last_name": user_data.last_name or "",
@@ -42,18 +34,42 @@ def update_or_create_user(func):
                 "stock_language": user_data.language_code,
             }
         )
-        # Update last_active on every interaction
+
         if not created:
             user.last_active = now()
             await user.asave(update_fields=['last_active'])
 
         user_language = user.selected_language or user.stock_language
-
-        # Pass the user and language to the actual view function
         return await func(update, context, user=user, language=user_language, *args, **kwargs)
 
     return wrapper
 
+
+def admin_only(func):
+    """Admin tekshiruvi endi botga bog'liq emas."""
+
+    @wraps(func)
+    async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
+        telegram_id = update.effective_user.id
+        try:
+            user = await User.objects.aget(telegram_id=telegram_id)
+        except User.DoesNotExist:
+            if update.message:
+                await update.message.reply_text("Siz ro'yxatdan o'tmagansiz yoki sizga ruxsat berilmagan.")
+            return
+
+        if not user.is_admin:
+            if update.message:
+                await update.message.reply_text("Ushbu buyruq faqat adminlar uchun!")
+            return
+
+        return await func(update, context, *args, user=user, **kwargs)
+
+    return wrapper
+
+
+# ... (qolgan dekoratorlar: channel_subscribe, send_typing_action va hk.)
+# Ular ham endi bot_instance'siz to'g'ri ishlashi kerak.
 def channel_subscribe(func):
     @wraps(func)
     async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
@@ -105,29 +121,6 @@ def channel_subscribe(func):
     return wrapper
 
 
-def admin_only(func):
-    @wraps(func)
-    async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
-        telegram_id = update.effective_user.id
-        try:
-            user = await sync_to_async(User.objects.get)(
-                telegram_id=telegram_id, bot=context.bot_data.get("bot_instance")
-            )
-        except User.DoesNotExist:
-            if update.message:
-                await update.message.reply_text("Siz ro'yxatdan o'tmagansiz yoki sizga ruxsat berilmagan.")
-            return
-
-        if not user.is_admin:
-            if update.message:
-                await update.message.reply_text("Ushbu buyruq faqat adminlar uchun!")
-            return
-
-        return await func(update, context, *args, user=user, **kwargs)
-
-    return wrapper
-
-
 def send_typing_action(func: Callable):
     @wraps(func)
     async def wrapper(update: Update, context: CallbackContext, *args, **kwargs):
@@ -157,4 +150,3 @@ def check_subscription_channel_always(func):
             return
 
     return wrapper
-

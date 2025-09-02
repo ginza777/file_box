@@ -15,7 +15,7 @@ from telegram.ext import CallbackContext, ContextTypes, ConversationHandler
 from .tasks import start_broadcast_task
 # Loyihaning lokal modullari
 from .keyboard import *
-from .models import User, Location, Language, Bot, Broadcast  # Language modelini import qilish
+from .models import User, Location, Language, Broadcast  # Language modelini import qilish
 from .utils import update_or_create_user, admin_only
 
 logger = logging.getLogger(__name__)

@@ -14,7 +14,7 @@ urlpatterns = [
     path('rosetta/', include('rosetta.urls')),
     path('__debug__/', include(debug_toolbar.urls)),
     path('', views.index, name="index"),
-    path('api/', include('apps.common_bot.urls')),
+    path('api/', include('apps.bot.urls')),
 ]
 
 # swagger

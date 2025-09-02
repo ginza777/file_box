@@ -1,8 +1,9 @@
-# handler.py
+# handler.py (YANGI, BOTSIZ ISHLAYDIGAN VERSIYA)
 
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ConversationHandler
 )
+
 # Funksiyalarni to'g'ri import qilish
 from .views import (
     start, about, help, share_bot, ask_language, language_choice_handle,
@@ -25,29 +26,29 @@ def get_application(token: str) -> Application:
     if token not in telegram_applications:
         application = Application.builder().token(token).build()
 
-        # Reklama yaratish uchun suhbat handler'ini yaratamiz
-        # Yangi ConversationHandler:
+        # Reklama yuborish uchun ConversationHandler
+        # Endi `inject_bot_instance` ishlatilmaydi.
         broadcast_conversation_handler = ConversationHandler(
             entry_points=[CommandHandler("broadcast", start_broadcast_conversation)],
             states={
                 AWAIT_BROADCAST_MESSAGE: [
-                    # O'ZGARISH: Endi buyruq bo'lmagan (~filters.COMMAND) har qanday xabarni
-                    # `receive_broadcast_message` funksiyasiga yuboradi.
                     MessageHandler(~filters.COMMAND, receive_broadcast_message)
                 ],
             },
             fallbacks=[CommandHandler("cancel", cancel_broadcast_conversation)],
         )
+
+        # Barcha handlerlar endi to'g'ridan-to'g'ri, wrappersiz yoziladi.
+        # Foydalanuvchini tekshirish va yaratish logikasi endi `views.py`dagi
+        # funksiyalarga qo'yilgan `@update_or_create_user` dekoratori orqali ishlaydi.
         handlers = [
-            # ... (CommandHandler("start", start) dan boshlab barcha eski handler'lar) ...
             CommandHandler("start", start),
             MessageHandler(filters.TEXT & filters.Regex(r"^(перезапуск|restart|boshlash|yeniden başlat)$"), start),
             CommandHandler("about", about),
             MessageHandler(filters.TEXT & filters.Regex(r"^📞 (Biz haqimizda|О_нас|About Us|Hakkımızda)$"), about),
             CommandHandler("help", help),
             MessageHandler(filters.TEXT & filters.Regex(r"^📚 (Help|Помощь|Yordam|Yardım)$"), help),
-            MessageHandler(filters.TEXT & filters.Regex(r"^📤 (Share Bot|Поделиться ботом|Botni ulashish|Botu paylaş)$"),
-                           share_bot),
+            MessageHandler(filters.TEXT & filters.Regex(r"^📤 (Share Bot|Поделиться ботом|Botni ulashish|Botu paylaş)$"), share_bot),
             CommandHandler("language", ask_language),
             MessageHandler(
                 filters.TEXT & filters.Regex(r"^🌍 (Tilni o'zgartirish|Изменить язык|Change Language|Dil değiştir)$"),
@@ -63,10 +64,8 @@ def get_application(token: str) -> Application:
             CallbackQueryHandler(secret_level, pattern="^SCRT_LVL"),
             CallbackQueryHandler(check_subscription_channel, pattern="^check_subscription"),
 
-            # --- REKLAMA ---
-            # Eskisini o'chirib, o'rniga ConversationHandler'ni qo'shamiz
+            # --- Reklama uchun ConversationHandler ---
             broadcast_conversation_handler,
-            # Tasdiqlash tugmalarini qayta ishlovchi handler o'z joyida qoladi
             CallbackQueryHandler(handle_broadcast_confirmation, pattern="^brdcast_")
         ]
 
