@@ -4,13 +4,12 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
 
-
-
+from apps.multiparser.admin import admin_site
 from . import views
 from .swagger.schema import swagger_urlpatterns
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path("admin/", admin_site.urls),
     path('rosetta/', include('rosetta.urls')),
     path('__debug__/', include(debug_toolbar.urls)),
     path('', views.index, name="index"),

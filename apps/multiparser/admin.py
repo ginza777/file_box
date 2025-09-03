@@ -180,8 +180,9 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('seller', 'document')
         }),
         ('Additional Info', {
-            'fields': ('poster_url', 'views_count', 'demo_link', 'file_url'),
+            'fields': ('poster_url', 'views_count', 'demo_link', 'file_url','json_data'),
             'classes': ('collapse',)
+
         }),
         ('⚠️ Deletion Warning', {
             'description': 'Deleting a product will also delete its associated document and may delete the seller if orphaned.',

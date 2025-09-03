@@ -89,7 +89,7 @@ if not DEBUG:
             "ENGINE": env.str("DB_ENGINE", "django.db.backends.postgresql_psycopg2"),
             "NAME": env.str("POSTGRES_DB"),
             "USER": env.str("POSTGRES_USER"),
-            "PASSWORD": env.str("DB_PASSWORD"),
+            "PASSWORD": env.str("POSTGRES_PASSWORD"),
             "HOST": env.str("POSTGRES_HOST"),
             "PORT": env.str("POSTGRES_PORT"),
             "ATOMIC_REQUESTS": False,
@@ -210,3 +210,6 @@ APPEND_SLASH = False
 
 # Single bot token from env
 BOT_TOKEN = env.str("BOT_TOKEN", default=None)
+ES_URL=env.str("ES_URL",default=None)
+ES_INDEX=env.str("ES_INDEX",default=None)
+FORCE_CHANNEL_USERNAME=env.str("FORCE_CHANNEL_USERNAME",default=None)

@@ -107,7 +107,6 @@ class Product(models.Model):
     slug = models.SlugField(max_length=500, unique=True, verbose_name="Slug")
     seller = models.ForeignKey(Seller, on_delete=models.CASCADE, related_name='products', verbose_name="Seller")
     price = models.DecimalField(max_digits=10, decimal_places=2, verbose_name="Price")
-    discount_price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True, verbose_name="Discount Price")
     discount = models.IntegerField(
         validators=[MinValueValidator(0), MaxValueValidator(100)],
         default=0,
@@ -118,10 +117,12 @@ class Product(models.Model):
     content_type = models.CharField(max_length=20, default='file', verbose_name="Content Type")
     demo_link = models.URLField(blank=True, null=True, verbose_name="Demo Link")
     file_url = models.URLField(blank=True, null=True, verbose_name="File URL")
+    file_url_2=models.URLField(blank=True, null=True, verbose_name="File URL 2")
+    discount_price = models.DecimalField(blank=True, null=True, max_digits=10, decimal_places=2, verbose_name="Discount Price")
     document = models.OneToOneField(Document, on_delete=models.CASCADE, related_name='product', verbose_name="Document")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
-
+    json_data=models.JSONField(blank=True, null=True, verbose_name="JSON Data")
     class Meta:
         verbose_name = "Product"
         verbose_name_plural = "Products"
