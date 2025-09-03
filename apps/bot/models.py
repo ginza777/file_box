@@ -2,21 +2,21 @@
 Models for the Kuku AI Bot application
 """
 import asyncio
-from django.db import models
+
 from django.core.exceptions import ValidationError
+from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from telegram.error import TelegramError
 
 from .utils import (
-    check_bot_is_admin_in_channel,
-    get_bot_details_from_telegram,
-    register_bot_webhook
-    )
+    check_bot_is_admin_in_channel
+)
 
 
 class GetOrNoneManager(models.Manager):
     """Custom manager that returns None instead of raising DoesNotExist"""
+
     def get_or_none(self, **kwargs):
         try:
             return self.get(**kwargs)

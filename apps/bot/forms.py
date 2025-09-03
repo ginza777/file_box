@@ -1,8 +1,7 @@
 from django import forms
 
-from .models import SubscribeChannel
-from .models import check_bot_is_admin_in_channel
-
+from apps.bot.models import SubscribeChannel
+from .utils import check_bot_is_admin_in_channel  # import from utils to avoid circular import
 
 class SubscribeChannelForm(forms.ModelForm):
     class Meta:

@@ -16,12 +16,13 @@ from .tasks import send_message_to_user_task
 class SubscribeChannelAdmin(admin.ModelAdmin):
     """Admin for Telegram subscription channels"""
     form = SubscribeChannelForm
+    # "subscriber_count" bu yerdan olib tashlandi
     list_display = ("channel_username", "channel_id", "active", "private", "created_at", "updated_at")
     list_filter = ("active", "private", "created_at")
     search_fields = ("channel_username", "channel_id")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("-created_at",)
-    
+
     fieldsets = (
         (_("Channel Information"), {
             "fields": ("channel_username", "channel_id", "private")
@@ -34,17 +35,6 @@ class SubscribeChannelAdmin(admin.ModelAdmin):
             "classes": ("collapse",)
         }),
     )
-
-    def get_queryset(self, request):
-        return super().get_queryset(request).annotate(
-            subscriber_count=Count('users', distinct=True)
-        )
-
-    def subscriber_count(self, obj):
-        return getattr(obj, 'subscriber_count', 0)
-    subscriber_count.short_description = _("Subscribers")
-    subscriber_count.admin_order_field = 'subscriber_count'
-
 
 @admin.register(User)
 class UserAdmin(admin.ModelAdmin):
