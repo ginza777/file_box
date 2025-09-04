@@ -8,7 +8,7 @@ from elasticsearch import Elasticsearch
 
 # Tika serverining standart manzilini belgilaymiz.
 # Buni settings.py fayliga qo'shib, o'zgartirsa ham bo'ladi.
-TIKA_URL = getattr(settings, 'TIKA_URL', 'http://localhost:9998')
+TIKA_URL = getattr(settings, 'TIKA_URL', 'http://multiparser_tika:9998')
 
 
 class Command(BaseCommand):

@@ -217,11 +217,14 @@ FORCE_CHANNEL_USERNAME=env.str("FORCE_CHANNEL_USERNAME",default=None)
 # ==============================================================================
 ELASTICSEARCH_DSL = {
     'default': {
-        'hosts': env.str('ES_URL', 'http://localhost:9200'),
+        'hosts': env.str('ES_URL', 'http://multiparser_elastic:9200'),
     },
 }
 
-ES_URL=env.str("ES_URL",default=None)
+ES_URL=env.str("ES_URL",default="http://multiparser_elastic:9200")
 ES_INDEX=env.str("ES_INDEX",default=None)
+
+# TIKA SERVER CONFIGURATION
+TIKA_URL = env.str("TIKA_URL", "http://multiparser_tika:9998")
 
 

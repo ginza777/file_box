@@ -47,7 +47,12 @@ def make_retry_session(total=5, backoff=0.5, pool_connections=3, pool_maxsize=3)
 # ======================
 import tika
 from tika import parser
-tika.initVM()
+
+# Configure Tika to use external server instead of starting local one
+TIKA_URL = getattr(settings, 'TIKA_URL', 'http://multiparser_tika:9998')
+tika.TikaClientOnly = True
+tika.TikaServerEndpoint = TIKA_URL
+tika.TikaJarPath = None  # Disable local Tika server
 
 @shared_task(
     bind=True,
@@ -75,7 +80,8 @@ def parse_document_task(self, document_id):
         raise Exception(f"[Parse] File not found on disk: {file_path}")
 
     try:
-        parsed = parser.from_file(str(file_path))
+        # Use external Tika server directly
+        parsed = parser.from_file(str(file_path), serverEndpoint=TIKA_URL)
     except Exception as e:
         logger.error(f"[Parse] Tika error for {document_id}: {e}")
         raise
@@ -122,7 +128,7 @@ def download_file_task(self, document_id):
         document.save(update_fields=["download_status"])
 
     session = make_retry_session()
-    file_path = Path(settings.MEDIA_ROOT) / f"documents/{document_id}.bin"
+    file_path = Path(settings.MEDIA_ROOT) / f"documents/{document_id}{document.file_type}"
     file_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:

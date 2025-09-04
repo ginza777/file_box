@@ -20,9 +20,9 @@ RUN pip install --no-cache-dir --upgrade pip \
 # 2-bosqich: Ishga tushirish uchun tayyor qolip
 FROM python:3.12-slim
 
-# Tika Server uchun Java'ni o'rnatish
+# Tika Server uchun Java'ni o'rnatish va netcat o'rnatish
 # YANGILANDI: Java versiyasi 17 dan 21 ga o'zgartirildi
-RUN apt-get update && apt-get install -y openjdk-21-jre-headless && apt-get clean
+RUN apt-get update && apt-get install -y openjdk-21-jre-headless netcat-openbsd && apt-get clean
 
 # Zarur paketlarni avvalgi bosqichdan nusxalash
 COPY --from=base /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/

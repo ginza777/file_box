@@ -8,7 +8,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from apps.multiparser.models import Seller, Document, Product
-from apps.multiparser.tasks import download_file_task, send_telegram_task, index_document_task, delete_local_file_task, \
+from apps.multiparser.tasks import download_file_task, parse_document_task, send_telegram_task, index_document_task, delete_local_file_task, \
     process_document
 
 
@@ -114,21 +114,40 @@ class Command(BaseCommand):
 
                                 # Hujjat holatini tekshirib, kerak bo'lsa vazifani qayta navbatga qo'yamiz
                                 document = product.document
-                                if document and document.file_url and document.download_status not in ['downloaded',
-                                                                                                       'downloading']:
-                                    document.download_status = 'pending'
-                                    document.save(update_fields=['download_status'])
-
-                                    task_chain = chain(
-                                        download_file_task.s(document.id),
-                                        send_telegram_task.s(),
-                                        index_document_task.s(),
-                                        delete_local_file_task.s()
-                                    )
-                                    task_chain.apply_async()
-                                    self.stdout.write(
-                                        self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id}")
-                                    )
+                                if document and document.file_url:
+                                    # Schedule tasks for documents that need processing
+                                    needs_processing = False
+                                    
+                                    if document.download_status not in ['downloaded', 'downloading']:
+                                        # Document needs to be downloaded
+                                        document.download_status = 'pending'
+                                        document.save(update_fields=['download_status'])
+                                        needs_processing = True
+                                        
+                                        task_chain = chain(
+                                            download_file_task.s(document.id),
+                                            parse_document_task.s(),
+                                            index_document_task.s(),
+                                            send_telegram_task.s(),
+                                            delete_local_file_task.s()
+                                        )
+                                        task_chain.apply_async()
+                                        self.stdout.write(
+                                            self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id} (download needed)")
+                                        )
+                                    
+                                    elif document.download_status == 'downloaded' and not document.parsed_content:
+                                        # Document is downloaded but needs parsing
+                                        task_chain = chain(
+                                            parse_document_task.s(document.id),
+                                            index_document_task.s(),
+                                            send_telegram_task.s(),
+                                            delete_local_file_task.s()
+                                        )
+                                        task_chain.apply_async()
+                                        self.stdout.write(
+                                            self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id} (parse needed)")
+                                        )
 
                             else:
                                 # --- YANGI MAHSULOT UCHUN MANTIQ ---
