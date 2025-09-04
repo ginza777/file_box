@@ -26,8 +26,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     'django_elasticsearch_dsl',
-    # third
-    'django_extensions',
     'django_celery_beat',
     'django_celery_results',
     'debug_toolbar',
