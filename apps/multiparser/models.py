@@ -36,7 +36,7 @@ class Document(models.Model):
         ('audio', 'Audio'),
         ('presentation', 'Presentation'),
     ]
-    
+
     DOWNLOAD_STATUS_CHOICES = [
         ('pending', 'Pending'),
         ('downloading', 'Downloading'),
@@ -44,39 +44,61 @@ class Document(models.Model):
         ('failed', 'Failed'),
         ('skipped', 'Skipped'),
     ]
-    
+
+    # Added 'sending' status for better state tracking
+    TELEGRAM_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sending', 'Sending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+        ('skipped', 'Skipped'),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     page_count = models.PositiveIntegerField(blank=True, null=True, verbose_name="Page Count")
     file_size = models.CharField(max_length=50, verbose_name="File Size")
+    file_size_bytes = models.BigIntegerField(default=0, help_text="Fayl hajmi (baytlarda)")
     file_type = models.CharField(max_length=20, verbose_name="File Type")
     short_content_url = models.URLField(blank=True, null=True, verbose_name="Short Content URL")
     content_duration = models.DurationField(blank=True, null=True, verbose_name="Content Duration")
+    is_indexed = models.BooleanField(default=False, verbose_name="Is Indexed in Elasticsearch")
     content_type = models.CharField(
-        max_length=20, 
-        choices=CONTENT_TYPE_CHOICES, 
+        max_length=20,
+        choices=CONTENT_TYPE_CHOICES,
         default='file',
         verbose_name="Content Type"
     )
-    file_url = models.URLField(blank=True, null=True, verbose_name="File URL", help_text="Direct link to the document file")
-    file_path = models.CharField(max_length=500, blank=True, null=True, verbose_name="Local File Path", help_text="Path where file is saved locally")
-    file_upload = models.FileField(upload_to=upload_to, blank=True, null=True, verbose_name="File Upload", help_text="Uploaded file for processing")
+    file_url = models.URLField(blank=True, null=True, verbose_name="File URL",
+                               help_text="Direct link to the document file")
+    file_path = models.CharField(max_length=500, blank=True, null=True, verbose_name="Local File Path",
+                                 help_text="Path where file is saved locally")
+    file_upload = models.FileField(upload_to=upload_to, blank=True, null=True, verbose_name="File Upload",
+                                   help_text="Uploaded file for processing")
     download_status = models.CharField(
         max_length=20,
         choices=DOWNLOAD_STATUS_CHOICES,
         default='pending',
         verbose_name="Download Status"
     )
+    delete_from_server = models.BooleanField(default=False, verbose_name="Delete from Server")
     download_started_at = models.DateTimeField(blank=True, null=True, verbose_name="Download Started At")
     download_completed_at = models.DateTimeField(blank=True, null=True, verbose_name="Download Completed At")
     download_error = models.TextField(blank=True, null=True, verbose_name="Download Error")
-    
+
     # Telegram integration
-    file_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Telegram File ID", help_text="File ID after sending to Telegram channel")
+    telegram_status = models.CharField(max_length=255, choices=TELEGRAM_STATUS_CHOICES, default='pending',
+                                       verbose_name="Telegram Status",
+                                       help_text="Status of sending to Telegram channel")
+    telegram_file_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Telegram File ID",
+                                        help_text="File ID after sending to Telegram channel")
+    file_id = models.CharField(max_length=255, blank=True, null=True, verbose_name="Telegram File ID",
+                               help_text="File ID after sending to Telegram channel")
     sent_to_channel = models.BooleanField(default=False, verbose_name="Sent to Channel")
     sent_at = models.DateTimeField(blank=True, null=True, verbose_name="Sent to Channel At")
-    
+
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
+    parsed_content = models.TextField(blank=True, null=True, verbose_name="Parsed Content")
 
     class Meta:
         verbose_name = "Document"
@@ -88,13 +110,13 @@ class Document(models.Model):
 
     def get_absolute_url(self):
         return reverse('admin:multiparser_document_change', args=[str(self.id)])
-    
+
     def get_file_url_display(self):
         """Get a clickable file URL for admin display"""
         if self.file_url:
             return f'<a href="{self.file_url}" target="_blank">Download File</a>'
         return 'No file URL available'
-    
+
     def has_file_url(self):
         """Check if document has a file URL"""
         return bool(self.file_url)
@@ -117,12 +139,15 @@ class Product(models.Model):
     content_type = models.CharField(max_length=20, default='file', verbose_name="Content Type")
     demo_link = models.URLField(blank=True, null=True, verbose_name="Demo Link")
     file_url = models.URLField(blank=True, null=True, verbose_name="File URL")
-    file_url_2=models.URLField(blank=True, null=True, verbose_name="File URL 2")
-    discount_price = models.DecimalField(blank=True, null=True, max_digits=10, decimal_places=2, verbose_name="Discount Price")
+    file_url_2 = models.URLField(blank=True, null=True, verbose_name="File URL 2")
+    discount_price = models.DecimalField(blank=True, null=True, max_digits=10, decimal_places=2,
+                                         verbose_name="Discount Price")
     document = models.OneToOneField(Document, on_delete=models.CASCADE, related_name='product', verbose_name="Document")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
-    json_data=models.JSONField(blank=True, null=True, verbose_name="JSON Data")
+    json_data = models.JSONField(blank=True, null=True, verbose_name="JSON Data")
+
+
     class Meta:
         verbose_name = "Product"
         verbose_name_plural = "Products"
@@ -142,20 +167,15 @@ class Product(models.Model):
 
     def delete(self, *args, **kwargs):
         """Custom delete method to handle cleanup"""
-        # Store references before deletion
         seller_id = self.seller.id
         seller_fullname = self.seller.fullname
-        
-        # Delete the product first (this will cascade to document)
         super().delete(*args, **kwargs)
-        
-        # Check if seller has no more products and delete if orphaned
         try:
             seller = Seller.objects.get(id=seller_id)
             if seller.products.count() == 0:
                 seller.delete()
         except Seller.DoesNotExist:
-            pass  # Seller was already deleted
+            pass
 
 
 class ProductView(models.Model):

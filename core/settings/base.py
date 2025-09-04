@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    'django_elasticsearch_dsl',
     # third
 
     'django_celery_beat',
@@ -166,15 +167,16 @@ REDIS_HOST = env.str("REDIS_HOST", "localhost")
 REDIS_PORT = env.int("REDIS_PORT", 6379)
 REDIS_DB = env.int("REDIS_DB", 0)
 
-CELERY_BROKER_URL = env.str("CELERY_BROKER_URL", "redis://localhost:6379")
-CELERY_RESULT_BACKEND = "django-db"
-CELERY_RESULT_EXTENDED = True
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-broker_connection_retry_on_startup = True
-CELERY_TIMEZONE = "Asia/Tashkent"
-
+# settings.py
+CELERY_TASK_ACKS_LATE = True                 # Worker yiqilib qolsa ham task yo‘qolmaydi
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50       # Memory leaklardan himoya
+CELERY_TASK_TIME_LIMIT = 600                 # Hard limit
+CELERY_TASK_SOFT_TIME_LIMIT = 540            # Soft limit
+CELERY_TASK_DEFAULT_RETRY_DELAY = 30
+CELERY_BROKER_POOL_LIMIT = 5                 # "max connections" xavfini kamaytirish
+CELERYD_PREFETCH_MULTIPLIER = 1              # Bir worker kamroq task oladi → lock kamroq
 CELERY_TASK_TRACK_STARTED = True
-CELERY_TASK_TIME_LIMIT = 30 * 60
 
 # Clear prev config
 LOGGING_CONFIG = None
@@ -210,6 +212,18 @@ APPEND_SLASH = False
 
 # Single bot token from env
 BOT_TOKEN = env.str("BOT_TOKEN", default=None)
+FORCE_CHANNEL_USERNAME=env.str("FORCE_CHANNEL_USERNAME",default=None)
+
+
+# ELASTICSEARCH DSL SOZLAMALARI
+# ==============================================================================
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': env.str('ES_URL', 'http://localhost:9200'),
+    },
+}
+
 ES_URL=env.str("ES_URL",default=None)
 ES_INDEX=env.str("ES_INDEX",default=None)
-FORCE_CHANNEL_USERNAME=env.str("FORCE_CHANNEL_USERNAME",default=None)
+
+

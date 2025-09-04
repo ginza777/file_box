@@ -102,6 +102,11 @@ class User(models.Model):
     selected_language = models.CharField(max_length=10, choices=Language.choices, null=True, blank=True)
     deeplink = models.TextField(blank=True, null=True)
     left = models.BooleanField(default=False)
+    search_mode = models.CharField(
+        max_length=10,
+        choices=[("normal", "Normal"), ("deep", "Deep")],
+        default="normal"
+    )
 
     class Meta:
         verbose_name = _("User")

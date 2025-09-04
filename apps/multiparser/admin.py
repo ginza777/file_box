@@ -59,10 +59,10 @@ class CustomAdminSite(admin.AdminSite):
 
 
 # Create custom admin site instance
-admin_site = CustomAdminSite(name='multiparser_admin')
-admin_site.site_header = "Multi Parser Administration"
-admin_site.site_title = "Multi Parser Admin Portal"
-admin_site.index_title = "Welcome to Multi Parser Admin"
+admin.site = CustomAdminSite(name='multiparser_admin')
+admin.site.site_header = "Multi Parser Administration"
+admin.site.site_title = "Multi Parser Admin Portal"
+admin.site.index_title = "Welcome to Multi Parser Admin"
 
 
 class SellerAdmin(admin.ModelAdmin):
@@ -81,36 +81,80 @@ class SellerAdmin(admin.ModelAdmin):
 
     products_count.short_description = 'Products Count'
 
+from django.contrib import admin
+from django.utils.html import format_html
+from .models import Document, Product, Seller
 
+
+class ProductInline(admin.StackedInline):
+    """Inline view for Product linked to Document"""
+    model = Product
+    extra = 0
+    fields = (
+        'id', 'title', 'slug', 'seller', 'price', 'discount_price',
+        'discount', 'poster_url', 'views_count', 'content_type',
+        'demo_link', 'file_url', 'file_url_2', 'json_data',
+        'created_at', 'updated_at'
+    )
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    show_change_link = True
+
+
+@admin.register(Document)
 class DocumentAdmin(admin.ModelAdmin):
-    """Admin interface for Document model"""
-    list_display = ['id', 'content_type', 'file_type', 'file_size', 'page_count', 'download_status_display',
-                    'file_url_display', 'file_path_display', 'created_at']
-    list_filter = ['content_type', 'file_type', 'download_status', 'created_at']
-    search_fields = ['id', 'file_type', 'content_type']
-    readonly_fields = ['id', 'created_at', 'updated_at', 'download_started_at', 'download_completed_at']
+    """Admin interface for Document model with inline Product"""
+    list_display = [
+        'id', 'content_type', 'file_type', 'file_size',
+        'page_count', 'download_status_display',
+        'telegram_status', 'file_url_display',
+        'file_path_display', 'is_indexed', 'created_at','parsed_content'
+    ]
+    list_filter = ['content_type', 'file_type', 'download_status', 'telegram_status', 'is_indexed']
+    search_fields = ['id', 'file_type', 'content_type', 'file_url']
+    readonly_fields = [
+        'id', 'created_at', 'updated_at',
+        'download_started_at', 'download_completed_at',
+        'telegram_file_id', 'file_id', 'sent_at'
+    ]
+    inlines = [ProductInline]
     list_per_page = 25
 
     fieldsets = (
-        ('Document Information', {
-            'fields': ('id', 'content_type', 'file_type', 'file_size', 'page_count')
+        ('📄 Document Info', {
+            'fields': (
+                'id', 'content_type', 'file_type',
+                'file_size', 'file_size_bytes', 'page_count',
+
+            )
         }),
-        ('Download Status', {
-            'fields': ('download_status', 'download_started_at', 'download_completed_at', 'download_error'),
+        ('⬇️ Download Details', {
+            'fields': (
+                'download_status', 'download_started_at',
+                'download_completed_at', 'download_error',
+                'file_url', 'file_path', 'file_upload',
+                'short_content_url', 'content_duration','parsed_content'
+            ),
             'classes': ('collapse',)
         }),
-        ('Content Details', {
-            'fields': ('short_content_url', 'content_duration', 'file_url', 'file_path', 'file_upload'),
+        ('📲 Telegram', {
+            'fields': (
+                'telegram_status', 'telegram_file_id',
+                'file_id', 'sent_to_channel', 'sent_at'
+            ),
             'classes': ('collapse',)
         }),
-        ('Timestamps', {
+        ('⚙️ Flags', {
+            'fields': ('is_indexed', 'delete_from_server'),
+            'classes': ('collapse',)
+        }),
+        ('⏱️ Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
 
     def download_status_display(self, obj):
-        """Display download status with colors"""
+        """Display download status with colors and icons"""
         status_colors = {
             'pending': '#6c757d',
             'downloading': '#ffc107',
@@ -131,38 +175,35 @@ class DocumentAdmin(admin.ModelAdmin):
             '<span style="color: {}; font-weight: bold;">{} {}</span>',
             color, icon, obj.get_download_status_display()
         )
-
     download_status_display.short_description = 'Download Status'
     download_status_display.admin_order_field = 'download_status'
 
     def file_url_display(self, obj):
-        """Display file URL as clickable link"""
+        """Clickable file URL"""
         if obj.file_url:
-            return format_html('<a href="{}" target="_blank" style="color: #007bff;">📄 Download File</a>', obj.file_url)
-        return format_html('<span style="color: #6c757d;">❌ No File URL</span>')
-
+            return format_html('<a href="{}" target="_blank">📄 File Link</a>', obj.file_url)
+        return format_html('<span style="color: #6c757d;">❌ None</span>')
     file_url_display.short_description = 'File URL'
-    file_url_display.admin_order_field = 'file_url'
 
     def file_path_display(self, obj):
-        """Display file path status"""
+        """Show local file path status"""
         if obj.file_path:
             return format_html('<span style="color: #28a745;">✅ {}</span>', obj.file_path)
         return format_html('<span style="color: #6c757d;">❌ Not Downloaded</span>')
-
     file_path_display.short_description = 'Local File'
-    file_path_display.admin_order_field = 'file_path'
 
     def has_delete_permission(self, request, obj=None):
-        """Prevent deletion if document is linked to a product"""
+        """Prevent deletion if linked to product"""
         if obj and hasattr(obj, 'product'):
             return False
         return super().has_delete_permission(request, obj)
 
 
+@admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
     """Admin interface for Product model"""
-    list_display = ['id', 'title', 'seller', 'price', 'discount_price', 'discount_percentage', 'views_count',
+    list_display = ['id', 'title', 'seller', 'price', 'discount_price',
+                    'discount_percentage', 'views_count',
                     'content_type', 'created_at']
     list_filter = ['content_type', 'created_at', 'seller']
     search_fields = ['id', 'title', 'seller__fullname']
@@ -170,85 +211,35 @@ class ProductAdmin(admin.ModelAdmin):
     list_per_page = 25
 
     fieldsets = (
-        ('Product Information', {
+        ('📦 Product Info', {
             'fields': ('id', 'title', 'slug', 'content_type')
         }),
-        ('Pricing', {
+        ('💰 Pricing', {
             'fields': ('price', 'discount_price', 'discount')
         }),
-        ('Relationships', {
+        ('🔗 Relations', {
             'fields': ('seller', 'document')
         }),
-        ('Additional Info', {
-            'fields': ('poster_url', 'views_count', 'demo_link', 'file_url','json_data'),
-            'classes': ('collapse',)
-
-        }),
-        ('⚠️ Deletion Warning', {
-            'description': 'Deleting a product will also delete its associated document and may delete the seller if orphaned.',
-            'fields': (),
+        ('📝 Additional', {
+            'fields': ('poster_url', 'views_count', 'demo_link', 'file_url', 'file_url_2', 'json_data'),
             'classes': ('collapse',)
         }),
-        ('Timestamps', {
+        ('⏱️ Timestamps', {
             'fields': ('created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
 
     def discount_percentage(self, obj):
-        """Display discount percentage"""
         return f"{obj.get_discount_percentage()}%"
-
     discount_percentage.short_description = 'Discount %'
-
-    def delete_model(self, request, obj):
-        """Custom delete with confirmation message"""
-        seller_name = obj.seller.fullname
-        document_info = f"{obj.document.file_type} ({obj.document.file_size})"
-
-        # Delete the product (this will trigger cascade deletion)
-        super().delete_model(request, obj)
-
-        # Show confirmation message
-        self.message_user(
-            request,
-            f'Product "{obj.title}" has been deleted. '
-            f'Related document ({document_info}) was also removed. '
-            f'Seller "{seller_name}" was checked for orphaned status.',
-            level='SUCCESS'
-        )
-
-    def delete_queryset(self, request, queryset):
-        """Custom bulk delete with confirmation message"""
-        count = queryset.count()
-        seller_names = set()
-        document_count = 0
-
-        # Collect information before deletion
-        for obj in queryset:
-            seller_names.add(obj.seller.fullname)
-            if hasattr(obj, 'document'):
-                document_count += 1
-
-        # Delete the queryset (this will trigger cascade deletion)
-        super().delete_queryset(request, queryset)
-
-        # Show confirmation message
-        seller_list = ', '.join(seller_names)
-        self.message_user(
-            request,
-            f'{count} products have been deleted. '
-            f'{document_count} related documents were also removed. '
-            f'Sellers ({seller_list}) were checked for orphaned status.',
-            level='SUCCESS'
-        )
 
 
 class ProductViewAdmin(admin.ModelAdmin):
     """Admin interface for ProductView model"""
     list_display = ['id', 'product', 'ip_address', 'viewed_at']
     list_filter = ['viewed_at', 'product']
-    search_fields = ['product__title', 'ip_address']
+    search_fields = ['product__title', 'ip_address','product__slug']
     readonly_fields = ['id', 'viewed_at']
     list_per_page = 25
 
@@ -296,12 +287,12 @@ class BotBroadcastAdmin(admin.ModelAdmin):
 
 
 # Register bot models with custom admin site
-admin_site.register(User, BotUserAdmin)
-admin_site.register(SubscribeChannel, BotSubscribeChannelAdmin)
-admin_site.register(Location, BotLocationAdmin)
-admin_site.register(SearchQuery, BotSearchQueryAdmin)
-admin_site.register(Broadcast, BotBroadcastAdmin)
-admin_site.register(Seller, SellerAdmin)
-admin_site.register(Document, DocumentAdmin)
-admin_site.register(Product, ProductAdmin)
-admin_site.register(ProductView, ProductViewAdmin)
+admin.site.register(User, BotUserAdmin)
+admin.site.register(SubscribeChannel, BotSubscribeChannelAdmin)
+admin.site.register(Location, BotLocationAdmin)
+admin.site.register(SearchQuery, BotSearchQueryAdmin)
+admin.site.register(Broadcast, BotBroadcastAdmin)
+admin.site.register(Seller, SellerAdmin)
+admin.site.register(Document, DocumentAdmin)
+admin.site.register(Product, ProductAdmin)
+admin.site.register(ProductView, ProductViewAdmin)

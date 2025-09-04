@@ -1,11 +1,15 @@
-import requests
 import re
 import time
+from decimal import Decimal
+
+import requests
+from celery import chain
 from django.core.management.base import BaseCommand
 from django.db import transaction
+
 from apps.multiparser.models import Seller, Document, Product
-from decimal import Decimal
-from apps.multiparser.tasks import process_document
+from apps.multiparser.tasks import download_file_task, send_telegram_task, index_document_task, delete_local_file_task, \
+    process_document
 
 
 def extract_file_url(poster_url):
@@ -74,41 +78,64 @@ class Command(BaseCommand):
                 if not results:
                     self.stdout.write(self.style.SUCCESS(f"No more results on page {page}. Stopping."))
                     break
-                i=1
+
                 for item in results:
-                    print(f"{id}---------------")
                     product_id = item.get("id")
-                    print(item)
                     if not product_id:
                         continue
 
                     try:
                         with transaction.atomic():
+                            # 1. Sotuvchini olamiz yoki yaratamiz
                             seller_data = item.get("seller", {})
                             seller, _ = Seller.objects.get_or_create(
                                 id=seller_data.get("id"),
                                 defaults={'fullname': seller_data.get("fullname", "Noma'lum Sotuvchi")}
                             )
 
-                            document_data = item.get("document", {})
-                            file_url = extract_file_url(item.get("poster_url", ""))
+                            # 2. Mahsulot mavjudligini tekshiramiz (document'ni ham birga olamiz)
+                            product = Product.objects.select_related('document').filter(id=product_id).first()
 
-                            product, created = Product.objects.update_or_create(
-                                id=product_id,
-                                defaults={
-                                    'title': item.get("title", ""),
-                                    'slug': item.get("slug", f"product-{product_id}"),
-                                    'seller': seller,
-                                    'price': Decimal(str(item.get("price", 0))),
-                                    'poster_url': item.get("poster_url", ""),
-                                    'file_url_2': item.get("file_url", ""),
-                                    'views_count': item.get("views_count", 0),
-                                    'content_type': item.get("content_type", "file"),
-                                    'json_data': item
-                                }
-                            )
+                            if product:
+                                # --- MAVJUD MAHSULOT UCHUN MANTIQ ---
 
-                            if created or not product.document:
+                                # Maydonlarni yangilaymiz
+                                product.title = item.get("title", "")
+                                product.slug = item.get("slug", f"product-{product_id}")
+                                product.seller = seller
+                                product.price = Decimal(str(item.get("price", 0)))
+                                product.poster_url = item.get("poster_url", "")
+                                product.file_url_2 = item.get("file_url", "")
+                                product.views_count = item.get("views_count", 0)
+                                product.content_type = item.get("content_type", "file")
+                                product.json_data = item
+                                product.save()
+                                self.stdout.write(f"Product {product_id} updated.")
+
+                                # Hujjat holatini tekshirib, kerak bo'lsa vazifani qayta navbatga qo'yamiz
+                                document = product.document
+                                if document and document.file_url and document.download_status not in ['downloaded',
+                                                                                                       'downloading']:
+                                    document.download_status = 'pending'
+                                    document.save(update_fields=['download_status'])
+
+                                    task_chain = chain(
+                                        download_file_task.s(document.id),
+                                        send_telegram_task.s(),
+                                        index_document_task.s(),
+                                        delete_local_file_task.s()
+                                    )
+                                    task_chain.apply_async()
+                                    self.stdout.write(
+                                        self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id}")
+                                    )
+
+                            else:
+                                # --- YANGI MAHSULOT UCHUN MANTIQ ---
+
+                                # Avval Hujjatni yaratamiz
+                                document_data = item.get("document", {})
+                                file_url = extract_file_url(item.get("poster_url", ""))
                                 document = Document.objects.create(
                                     page_count=document_data.get("page_count", 0),
                                     file_size=document_data.get("file_size", "0 MB"),
@@ -116,21 +143,32 @@ class Command(BaseCommand):
                                     content_type=document_data.get("content_type", "file"),
                                     file_url=file_url
                                 )
-                                product.document = document
 
-                                product.save()
+                                # Endi Hujjat bilan birga Mahsulotni yaratamiz
+                                product = Product.objects.create(
+                                    id=product_id,
+                                    document=document,
+                                    title=item.get("title", ""),
+                                    slug=item.get("slug", f"product-{product_id}"),
+                                    seller=seller,
+                                    price=Decimal(str(item.get("price", 0))),
+                                    poster_url=item.get("poster_url", ""),
+                                    file_url_2=item.get("file_url", ""),
+                                    views_count=item.get("views_count", 0),
+                                    content_type=item.get("content_type", "file"),
+                                    json_data=item
+                                )
+                                self.stdout.write(self.style.SUCCESS(f"NEW product {product.id} created."))
 
+                                # Yangi mahsulot uchun vazifani navbatga qo'yamiz
                                 if document.file_url:
-                                    process_document.delay(document.id)
+                                    process_document(document.id)
                                     self.stdout.write(
-                                        self.style.SUCCESS(f"Task scheduled for NEW product {product.id}"))
-                            else:
-                                self.stdout.write(f"Product {product_id} updated.")
-                        product.json_data = item
-                        product.save()
+                                        self.style.SUCCESS(f"Task chain scheduled for NEW product {product.id}")
+                                    )
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"Error processing item ID {product_id}: {e}"))
-                i=i+1
+
                 time.sleep(1)
             except requests.exceptions.HTTPError as e:
                 self.stdout.write(self.style.ERROR(f"HTTP Error on page {page}: {e}"))
@@ -138,4 +176,3 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.ERROR(f"An unexpected error occurred on page {page}: {e}"))
 
         self.stdout.write(self.style.SUCCESS("\nParsing completed!"))
-

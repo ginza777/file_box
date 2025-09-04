@@ -208,32 +208,43 @@ def default_keyboard(lang, admin=False) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True, one_time_keyboard=False)
 
 
-def build_search_results_keyboard(page_obj, files_on_page, search_mode, language):
+def build_search_results_keyboard(page_obj, products_on_page, search_mode, language):
+    """
+    Qidiruv natijalari va sahifalash tugmalarini yaratadi.
+    callback_data uchun to'g'ri Document ID (UUID) ishlatiladi.
+    """
     buttons = []
-    # Build file buttons with a short callback data
-    for file in files_on_page:
-        buttons.append([InlineKeyboardButton(f"📄 {file.title}", callback_data=f"getfile_{file.id}")])
 
-    # Add pagination buttons
+    # Fayllar ro'yxati uchun tugmalarni yaratamiz
+    for product in products_on_page:  # O'zgaruvchi nomi aniqlashtirildi
+        # --- ASOSIY O'ZGARISH: product.document.id ishlatilmoqda ---
+        callback_data = f"getfile_{product.document.id}"
+
+        button_text = f"📄 {product.title}"
+        buttons.append([InlineKeyboardButton(button_text, callback_data=callback_data)])
+
+    # Sahifalash (pagination) tugmalari
     pagination_buttons = []
     if page_obj.has_previous():
         prev_page = page_obj.previous_page_number()
-        # The callback data is now short and does not include the query text
         pagination_buttons.append(
-            InlineKeyboardButton(translation.pagination_prev[language],
+            InlineKeyboardButton(translation.pagination_prev[language],  # translation.py dan olingan
                                  callback_data=f"search_{search_mode}_{prev_page}")
         )
 
-    current_page_text = f"Page {page_obj.number}/{page_obj.paginator.num_pages}"
+    # Joriy sahifa raqamini ko'rsatuvchi (bosilmaydigan) tugma
+    current_page_text = f"{page_obj.number}/{page_obj.paginator.num_pages}"
     pagination_buttons.append(InlineKeyboardButton(current_page_text, callback_data="ignore"))
 
     if page_obj.has_next():
         next_page = page_obj.next_page_number()
-        # The callback data is now short and does not include the query text
         pagination_buttons.append(
-            InlineKeyboardButton(translation.pagination_next[language],
+            InlineKeyboardButton(translation.pagination_next[language],  # translation.py dan olingan
                                  callback_data=f"search_{search_mode}_{next_page}")
         )
 
-    buttons.append(pagination_buttons)
+    if pagination_buttons:  # Agar sahifalash tugmalari mavjud bo'lsa
+        buttons.append(pagination_buttons)
+
     return InlineKeyboardMarkup(buttons)
+

@@ -214,9 +214,9 @@ deep_search_mode_on = {
     "tr": "✅ Gelişmiş arama modu açık. Artık dosya içerikleri de aranacak.",
 }
 
-search = {"uz": "🔍 Qidirish", "ru": "🔍 Поиск", "en": "🔍 Search", "tr": "🔍 Arama"}
-deep_search = {"uz": "🔎 Kengaytirilgan qidirish", "ru": "🔎 Расширенный поиск", "en": "🔎 Advanced Search",
-               "tr": "🔎 Gelişmiş Arama"}
+search = {"uz": "🔍Qidirish", "ru": "🔍Поиск", "en": "🔍Search", "tr": "🔍Arama"}
+deep_search = {"uz": "🔎Kengaytirilgan qidirish", "ru": "🔎Расширенный поиск", "en": "🔎Advanced Search",
+               "tr": "🔎Gelişmiş Arama"}
 change_language = {"uz": "🌍 Tilni o'zgartirish", "ru": "🌍 Изменить язык", "en": "🌍 Change Language",
                    "tr": "🌍 Dil değiştir"}
 help_text = {"uz": "📚 Yordam", "ru": "📚 Помощь", "en": "📚 Help", "tr": "📚 Yardım"}
@@ -234,4 +234,15 @@ start_required = {
     "en": "Please press /start to run the bot.",
     "ru": "Пожалуйста, нажмите /start, чтобы запустить бота.",
     "tr": "Lütfen botu çalıştırmak için /start'a basın."
+}
+file_is_being_sent = {
+    'uz': "Fayl yuborilmoqda...",
+    'ru': "Файл отправляется...",
+    'en': "Sending file...",
+}
+
+file_not_available_for_sending = {
+    'uz': "Afsuski, bu faylni bot orqali yuborishning imkoni yo'q. Ehtimoliy sabablar: fayl hajmi 50MB dan katta yoki kanalga yuborishda xatolik yuz bergan.",
+    'ru': "К сожалению, этот файл невозможно отправить через бота. Возможные причины: размер файла превышает 50 МБ или произошла ошибка при отправке в канал.",
+    'en': "Unfortunately, this file cannot be sent via the bot. Possible reasons: the file size is larger than 50MB or an error occurred while sending to the channel.",
 }
