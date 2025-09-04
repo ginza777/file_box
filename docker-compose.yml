@@ -1,0 +1,116 @@
+services:
+  # 1. Django Web ilovasi (Uvicorn orqali)
+  web:
+    build: .
+    container_name: multiparser_web
+    # O'ZGARTIRILDI: Gunicorn o'rniga Uvicorn buyrug'i
+    command: uvicorn core.asgi:application --host 0.0.0.0 --port 8000
+    volumes:
+      - .:/app
+      - static_volume:/app/static
+      - media_volume:/app/media
+    expose:
+      - 8000
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+      - es01
+    networks:
+      - multiparser_net
+
+  # ... (celery, celery-beat, tika, es01, postgres, redis xizmatlari o'zgarishsiz qoladi) ...
+  celery:
+    build: .
+    container_name: multiparser_celery
+    command: celery -A core worker -l info --concurrency=4
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - multiparser_net
+
+  celery-beat:
+    build: .
+    container_name: multiparser_celery_beat
+    command: celery -A core beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - multiparser_net
+
+  tika:
+    image: apache/tika:latest
+    container_name: multiparser_tika
+    ports:
+      - "9999:9998"
+
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
+    container_name: multiparser_elastic
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9201:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - multiparser_net
+
+  postgres:
+    image: postgres:15
+    container_name: multiparser_postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    env_file:
+      - .env
+    ports:
+      - "5433:5432"
+    networks:
+      - multiparser_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: multiparser_redis
+    ports:
+      - "6380:6379"
+    networks:
+      - multiparser_net
+
+  # 8. Nginx (Web-server va reverse-proxy)
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: multiparser_nginx
+    ports:
+      - "8080:80"
+    volumes:
+      # O'ZGARTIRILDI: Butun jildni bog'lash
+      - ./nginx:/etc/nginx/conf.d
+      - static_volume:/app/static
+      - media_volume:/app/media
+    depends_on:
+      - web
+    networks:
+      - multiparser_net
+
+networks:
+  multiparser_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  es_data:
+  static_volume:
+  media_volume:

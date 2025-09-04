@@ -107,7 +107,7 @@ class DocumentAdmin(admin.ModelAdmin):
         'id', 'content_type', 'file_type', 'file_size',
         'page_count', 'download_status_display',
         'telegram_status', 'file_url_display',
-        'file_path_display', 'is_indexed', 'created_at','parsed_content'
+        'file_path_display', 'is_indexed', 'created_at',
     ]
     list_filter = ['content_type', 'file_type', 'download_status', 'telegram_status', 'is_indexed']
     search_fields = ['id', 'file_type', 'content_type', 'file_url']
