@@ -42,7 +42,7 @@ class Command(BaseCommand):
         start_page = options['start_page']
         end_page = options['end_page']
 
-        base_api_url = "https://soff.uz/_next/data/HT2g6Ps9UGEtaSpYNC9G6/scientific-resources/all.json"
+        base_api_url = "https://soff.uz/_next/data/n8FdePPcOhgY7lG6qCGKI/scientific-resources/all.json"
 
         headers = {
             "accept": "*/*",
