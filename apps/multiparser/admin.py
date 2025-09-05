@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.urls import reverse
 
 # Import bot models only
 from apps.bot.models import User, SubscribeChannel, Location, SearchQuery, Broadcast
@@ -207,7 +208,7 @@ class ProductAdmin(admin.ModelAdmin):
                     'content_type', 'created_at']
     list_filter = ['content_type', 'created_at', 'seller']
     search_fields = ['id', 'title', 'seller__fullname']
-    readonly_fields = ['id', 'created_at', 'updated_at']
+    readonly_fields = ['id', 'created_at', 'updated_at', 'document_inline']
     list_per_page = 25
 
     fieldsets = (
@@ -218,7 +219,7 @@ class ProductAdmin(admin.ModelAdmin):
             'fields': ('price', 'discount_price', 'discount')
         }),
         ('🔗 Relations', {
-            'fields': ('seller', 'document')
+            'fields': ('seller', 'document', 'document_inline')
         }),
         ('📝 Additional', {
             'fields': ('poster_url', 'views_count', 'demo_link', 'file_url', 'file_url_2', 'json_data'),
@@ -229,6 +230,14 @@ class ProductAdmin(admin.ModelAdmin):
             'classes': ('collapse',)
         }),
     )
+
+    def document_inline(self, obj):
+        """Readonly field to show related Document details and edit link"""
+        if obj.document:
+            url = reverse('admin:multiparser_document_change', args=[obj.document.id])
+            return format_html('<a href="{}" target="_blank">📄 View Document</a>', url)
+        return format_html('<span style="color: #6c757d;">❌ No Document</span>')
+    document_inline.short_description = 'Document'
 
     def discount_percentage(self, obj):
         return f"{obj.get_discount_percentage()}%"
