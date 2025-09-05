@@ -1,3 +1,4 @@
+import os
 import re
 import time
 from decimal import Decimal
@@ -10,6 +11,7 @@ from django.db import transaction
 from apps.multiparser.models import Seller, Document, Product
 from apps.multiparser.tasks import download_file_task, parse_document_task, send_telegram_task, index_document_task, delete_local_file_task, \
     process_document
+from core.celery import app as celery_app
 
 
 def extract_file_url(poster_url):
@@ -80,6 +82,7 @@ class Command(BaseCommand):
                     break
 
                 for item in results:
+                    time.sleep(0.3)
                     product_id = item.get("id")
                     if not product_id:
                         continue
@@ -115,6 +118,7 @@ class Command(BaseCommand):
                                 # Hujjat holatini tekshirib, kerak bo'lsa vazifani qayta navbatga qo'yamiz
                                 document = product.document
                                 if document and document.file_url:
+                                    time.sleep(0.1)
                                     # Schedule tasks for documents that need processing
                                     needs_processing = False
                                     
@@ -131,7 +135,16 @@ class Command(BaseCommand):
                                             send_telegram_task.s(),
                                             delete_local_file_task.s()
                                         )
-                                        task_chain.apply_async()
+                                        # Debug: show broker being used
+                                        print('DEBUG: ENV CELERY_BROKER_URL=', os.environ.get('CELERY_BROKER_URL'))
+                                        print('DEBUG: ENV REDIS_URL=', os.environ.get('REDIS_URL'))
+                                        print('DEBUG: celery_app.conf.broker_url=', celery_app.conf.broker_url)
+                                        try:
+                                            print('DEBUG: celery.current_app.conf.broker_url=', celery.current_app.conf.broker_url)
+                                        except Exception as _:
+                                            pass
+
+                                        task_chain.apply_async(app=celery_app)
                                         self.stdout.write(
                                             self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id} (download needed)")
                                         )
@@ -144,7 +157,7 @@ class Command(BaseCommand):
                                             send_telegram_task.s(),
                                             delete_local_file_task.s()
                                         )
-                                        task_chain.apply_async()
+                                        task_chain.apply_async(app=celery_app)
                                         self.stdout.write(
                                             self.style.SUCCESS(f"Task chain RE-SCHEDULED for EXISTING product {product.id} (parse needed)")
                                         )

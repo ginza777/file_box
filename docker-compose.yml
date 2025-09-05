@@ -3,8 +3,9 @@ services:
   web:
     build: .
     container_name: multiparser_web
-    # O'ZGARTIRILDI: Gunicorn o'rniga Uvicorn buyrug'i
-    command: uvicorn core.asgi:application --host 0.0.0.0 --port 8000
+    # entrypoint.sh skripti birinchi ishga tushadi, so'ngra bu buyruqni bajaradi
+    entrypoint: /app/entrypoint.sh
+    command: uvicorn core.asgi:application --host 0.0.0.0 --port ${DJANGO_PORT}
     volumes:
       - .:/app
       - static_volume:/app/static
@@ -12,35 +13,43 @@ services:
     env_file:
       - .env
     environment:
-      - ES_URL=http://multiparser_elastic:9200
-      - TIKA_URL=http://multiparser_tika:9998
+      - CELERY_BROKER_URL=${REDIS_URL}
+      - CELERY_RESULT_BACKEND=${REDIS_URL}
     ports:
-      - "8000:8000"
+      - "${DJANGO_PORT}:${DJANGO_PORT}"
+    # YAXSHILANDI: Ilova to'g'ridan-to'g'ri pgbouncer'ga bog'liq
     depends_on:
-      - postgres
-      - redis
-      - es01
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_started
+      es01:
+        condition: service_started
     networks:
       - multiparser_net
 
-  # ... (celery, celery-beat, tika, es01, postgres, redis xizmatlari o'zgarishsiz qoladi) ...
+  # 2. Celery Worker (Asosiy fon vazifalarini bajaruvchi)
   celery:
     build: .
     container_name: multiparser_celery
-    command: celery -A core worker -l info --concurrency=4
+    command: celery -A core worker -l info --concurrency=3
     volumes:
       - .:/app
     env_file:
       - .env
     environment:
-      - ES_URL=http://multiparser_elastic:9200
-      - TIKA_URL=http://multiparser_tika:9998
+      - CELERY_BROKER_URL=${REDIS_URL}
+      - CELERY_RESULT_BACKEND=${REDIS_URL}
+    # YAXSHILANDI: Celery ham ma'lumotlar bazasiga pgbouncer orqali ulanadi
     depends_on:
-      - redis
-      - postgres
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_started
     networks:
       - multiparser_net
 
+  # 3. Celery Beat (Vaqti-vaqti bilan ishlaydigan vazifalar rejalashtiruvchisi)
   celery-beat:
     build: .
     container_name: multiparser_celery_beat
@@ -49,76 +58,147 @@ services:
       - .:/app
     env_file:
       - .env
-    depends_on:
-      - redis
-      - postgres
-    networks:
-      - multiparser_net
-
-  tika:
-    image: apache/tika:latest
-    container_name: multiparser_tika
-    ports:
-      - "9999:9998"
-    networks:
-      - multiparser_net
-
-  es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
-    container_name: multiparser_elastic
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
-    ports:
-      - "9201:9200"
-    volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - CELERY_BROKER_URL=${REDIS_URL}
+      - CELERY_RESULT_BACKEND=${REDIS_URL}
+    # YAXSHILANDI: Celery Beat ham pgbouncer orqali ulanadi
+    depends_on:
+      pgbouncer:
+        condition: service_started
+      redis:
+        condition: service_started
     networks:
       - multiparser_net
 
+  # 4. PostgreSQL Ma'lumotlar Bazasi
   postgres:
     image: postgres:15
     container_name: multiparser_postgres
     volumes:
-      - postgres_data:/var/lib/postgresql/data/
-    env_file:
-      - .env
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     ports:
-      - "5433:5432"
+      - "${POSTGRES_EXTERNAL_PORT}:${POSTGRES_PORT}"
     networks:
       - multiparser_net
 
+  # 5. Redis (Kesh va Celery uchun broker)
   redis:
     image: redis:7-alpine
+    env_file:
+      - .env
     container_name: multiparser_redis
     ports:
-      - "6380:6379"
+      - "${REDIS_EXTERNAL_PORT}:${REDIS_PORT}"
     networks:
       - multiparser_net
 
-  # 8. Nginx (Web-server va reverse-proxy)
-  nginx:
-    image: nginx:1.25-alpine
-    container_name: multiparser_nginx
-    ports:
-      - "8080:80"
+  # 6. Elasticsearch (Qidiruv tizimi)
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.2
+    container_name: multiparser_elastic
+    env_file:
+      - .env
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
     volumes:
-      # O'ZGARTIRILDI: Butun jildni bog'lash
-      - ./nginx:/etc/nginx/conf.d
-      - static_volume:/app/static
-      - media_volume:/app/media
-    depends_on:
-      - web
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_EXTERNAL_PORT}:${ES_PORT}"
     networks:
       - multiparser_net
 
+  # 7. Apache Tika (Fayllardan matn ajratib olish uchun)
+  tika:
+    image: apache/tika:latest
+    env_file:
+      - .env
+    container_name: multiparser_tika
+    ports:
+      - "${TIKA_EXTERNAL_PORT}:${TIKA_PORT}"
+    networks:
+      - multiparser_net
+
+
+  # 9. Grafana (Monitoring uchun dashboard)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: multiparser_grafana
+    env_file:
+      - .env
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GF_SECURITY_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD}
+      - GF_INSTALL_PLUGINS=${GF_INSTALL_PLUGINS}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "${GRAFANA_EXTERNAL_PORT}:${GRAFANA_PORT}"
+    networks:
+      - multiparser_net
+
+  # 10. Flower (Celery uchun monitoring interfeysi)
+  pgbouncer:
+    image: bitnami/pgbouncer:latest
+    container_name: multiparser_pgbouncer
+    environment:
+      - POSTGRESQL_HOST=${POSTGRES_HOST}
+      - POSTGRESQL_PORT=${POSTGRES_PORT}
+      - POSTGRESQL_USERNAME=${POSTGRES_USER}
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRESQL_DATABASE=${POSTGRES_DB}
+      - PGBOUNCER_AUTH_TYPE=${PGBOUNCER_AUTH_TYPE}
+      - PGBOUNCER_PORT=${PGBOUNCER_PORT}
+      - PGBOUNCER_POOL_MODE=transaction
+      - PGBOUNCER_MAX_CLIENT_CONNECTIONS=${PGBOUNCER_MAX_CLIENT_CONN}
+      - PGBOUNCER_DEFAULT_POOL_SIZE=${PGBOUNCER_DEFAULT_POOL_SIZE}
+      - PGBOUNCER_MAX_DB_CONNECTIONS=${PGBOUNCER_MAX_DB_CONNECTIONS}
+      - PGBOUNCER_MAX_USER_CONNECTIONS=${PGBOUNCER_MAX_USER_CONNECTIONS}
+    ports:
+      - "${PGBOUNCER_EXTERNAL_PORT}:${PGBOUNCER_PORT}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - multiparser_net
+  flower:
+    build: .
+    container_name: multiparser_flower
+    command: celery -A core flower --port=${FLOWER_PORT} --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+    env_file:
+      - .env
+    environment:
+      - CELERY_BROKER_URL=${REDIS_URL}
+      - CELERY_RESULT_BACKEND=${REDIS_URL}
+      - CELERY_BROKER_POOL_LIMIT=10
+    volumes:
+      - .:/app
+    ports:
+      - "${FLOWER_EXTERNAL_PORT}:${FLOWER_PORT}"
+    depends_on:
+      - redis
+      - celery
+    networks:
+      - multiparser_net
+
+# Docker hajmlari (volumes)
+volumes:
+  postgres_data:
+  elasticsearch_data:
+  static_volume:
+  media_volume:
+  grafana_data:
+
+# Docker tarmoqlari (networks)
 networks:
   multiparser_net:
     driver: bridge
-
-volumes:
-  postgres_data:
-  es_data:
-  static_volume:
-  media_volume:

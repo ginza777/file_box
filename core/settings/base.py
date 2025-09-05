@@ -7,16 +7,18 @@ import environ
 
 from core.jazzmin_conf import *  # noqa
 
+# Base settings
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
-env.read_env(".env")
+env.read_env(str(BASE_DIR / ".env"))
+
+# Core settings
 SECRET_KEY = env.str("SECRET_KEY")
 DEBUG = env.bool("DEBUG")
-
 ALLOWED_HOSTS = ["*"]
+STAGE = env.str("STAGE", default="development")
 
-STAGE = 'development'
-
+# Application definition
 INSTALLED_APPS = [
     "jazzmin",
     "django.contrib.admin",
@@ -48,6 +50,21 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 10,
 }
 
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
+        "APP_DIRS": True, # debug_toolbar ogohlantirishini tuzatadi
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     'whitenoise.middleware.WhiteNoiseMiddleware',
@@ -62,12 +79,127 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = "core.urls"
+WSGI_APPLICATION = "core.wsgi.application"
 
+# Database
+DATABASES = {
+    'default': {
+        'ENGINE': env.str('DB_ENGINE'),
+        'NAME': env.str('POSTGRES_DB'),
+        'USER': env.str('POSTGRES_USER'),
+        'PASSWORD': env.str('POSTGRES_PASSWORD'),
+        'HOST': env.str('POSTGRES_HOST'),
+        'PORT': env.str('POSTGRES_PORT'),
+        'CONN_MAX_AGE': 0,  # Important for PgBouncer
+        'OPTIONS': {
+            'connect_timeout': 10,
+            'client_encoding': 'UTF8',
+        },
+    }
+}
+
+# Internationalization
+LANGUAGE_CODE = env.str("LANGUAGE_CODE", default="uz")
+TIME_ZONE = env.str("TIME_ZONE", default="Asia/Tashkent")
+USE_I18N = True
+USE_TZ = True
+USE_L10N = True
+
+LANGUAGES = [
+    ("uz", "Uzbek"),
+    ("ru", "Russian"),
+    ("en", "English"),
+]
+
+# Static and Media files
+STATIC_URL = env.str("STATIC_URL", default="static/")
+STATIC_ROOT = BASE_DIR / "static"
+STATICFILES_DIRS = (BASE_DIR / "staticfiles",)
+
+MEDIA_URL = env.str("MEDIA_URL", default="media/")
+MEDIA_ROOT = BASE_DIR / "media"
+
+# Cache configuration
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": env.str("REDIS_URL"),
+        "KEY_PREFIX": env.str("CACHE_KEY_PREFIX", default="kuku_bot"),
+    }
+}
+
+# Redis settings
+REDIS_HOST = env.str("REDIS_HOST")
+REDIS_PORT = env.int("REDIS_PORT")
+REDIS_DB = env.int("REDIS_DB")
+
+# Celery settings
+CELERY_BROKER_URL = env.str("REDIS_URL")
+CELERY_RESULT_BACKEND = env.str("REDIS_URL")
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_MAX_TASKS_PER_CHILD = env.int("CELERY_MAX_TASKS_PER_CHILD", default=50)
+CELERY_TASK_TIME_LIMIT = env.int("CELERY_TASK_TIME_LIMIT", default=600)
+CELERY_TASK_SOFT_TIME_LIMIT = env.int("CELERY_TASK_SOFT_TIME_LIMIT", default=540)
+CELERY_TASK_DEFAULT_RETRY_DELAY = env.int("CELERY_RETRY_DELAY", default=30)
+CELERY_BROKER_POOL_LIMIT = env.int("CELERY_BROKER_POOL_LIMIT", default=5)
+CELERYD_PREFETCH_MULTIPLIER = env.int("CELERYD_PREFETCH_MULTIPLIER", default=1)
+CELERY_TASK_TRACK_STARTED = True
+CELERY_RESULT_BACKEND = "django-db"
+CELERY_CACHE_BACKEND = "django-cache"
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_RESULT_EXTENDED = True
+CELERY_RESULT_EXPIRES = env.int("CELERY_RESULT_EXPIRES", default=604800)
+
+# Logging configuration
+LOGGING_CONFIG = None
+LOGLEVEL = env.str("DJANGO_LOGLEVEL", default="info").upper()
+
+logging.config.dictConfig({
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "console": {
+            "format": "%(asctime)s %(levelname)s [%(name)s:%(lineno)s] %(module)s %(process)d %(thread)d %(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "console",
+        },
+    },
+    "loggers": {
+        "": {
+            "level": LOGLEVEL,
+            "handlers": ["console"],
+        },
+    },
+})
+
+# Bot configuration
+WEBHOOK_URL = env.str("WEBHOOK_URL")
+CELERY_WEBHOOK = env.str("CELERY_WEBHOOK", default="False")
+BOT_TOKEN = env.str("BOT_TOKEN")
+FORCE_CHANNEL_USERNAME = env.str("FORCE_CHANNEL_USERNAME")
+
+# Elasticsearch configuration
+ELASTICSEARCH_DSL = {
+    "default": {
+        "hosts": env.str("ES_URL"),
+    },
+}
+
+ES_URL = env.str("ES_URL")
+ES_INDEX = env.str("ES_INDEX")
+
+# Tika configuration
+TIKA_URL = env.str("TIKA_URL")
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
         "DIRS": [BASE_DIR / "templates"],
-        "APP_DIRS": True,
+        "APP_DIRS": True, # debug_toolbar ogohlantirishini tuzatadi
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.debug",
@@ -78,153 +210,3 @@ TEMPLATES = [
         },
     },
 ]
-
-WSGI_APPLICATION = "core.wsgi.application"
-
-# Ma'lumotlar bazasi uchun asosiy sozlamalar
-if not DEBUG:
-    DATABASES = {
-        "default": {
-            "ENGINE": env.str("DB_ENGINE", "django.db.backends.postgresql_psycopg2"),
-            "NAME": env.str("POSTGRES_DB"),
-            "USER": env.str("POSTGRES_USER"),
-            "PASSWORD": env.str("POSTGRES_PASSWORD"),
-            "HOST": env.str("POSTGRES_HOST"),
-            "PORT": env.str("POSTGRES_PORT"),
-            "ATOMIC_REQUESTS": False,
-        }
-    }
-else:
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
-            "ATOMIC_REQUESTS": False,
-        }
-    }
-
-AUTH_PASSWORD_VALIDATORS = [
-    {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
-    },
-]
-
-STORAGES = {
-    "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
-    },
-}
-
-LANGUAGE_CODE = "uz"
-
-TIME_ZONE = "Asia/Tashkent"
-USE_I18N = True
-
-USE_TZ = True
-USE_L10N = True
-LANGUAGES = [
-    ("uz", "Uzbek"),
-    ("ru", "Russian"),
-    ("en", "English"),
-
-]
-MODELTRANSLATION_LANGUAGES = ("uz",)
-MODELTRANSLATION_DEFAULT_LANGUAGE = "uz"
-MODELTRANSLATION_FALLBACK_LANGUAGES = ("uz",)
-LOCALE_PATHS = (os.path.join(BASE_DIR, "locale"),)
-gettext = lambda s: s  # noqa
-
-STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "static"
-STATICFILES_DIRS = (BASE_DIR / "staticfiles",)
-
-MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
-
-DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
-# CACHES
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": f"{env.str('REDIS_URL', 'redis://localhost:6379/0')}",
-        "KEY_PREFIX": "boilerplate",  # todo: you must change this with your project name or something else
-    }
-}
-
-REDIS_HOST = env.str("REDIS_HOST", "localhost")
-REDIS_PORT = env.int("REDIS_PORT", 6379)
-REDIS_DB = env.int("REDIS_DB", 0)
-
-# settings.py
-CELERY_TASK_ACKS_LATE = True                 # Worker yiqilib qolsa ham task yo‘qolmaydi
-CELERY_TASK_REJECT_ON_WORKER_LOST = True
-CELERY_WORKER_MAX_TASKS_PER_CHILD = 50       # Memory leaklardan himoya
-CELERY_TASK_TIME_LIMIT = 600                 # Hard limit
-CELERY_TASK_SOFT_TIME_LIMIT = 540            # Soft limit
-CELERY_TASK_DEFAULT_RETRY_DELAY = 30
-CELERY_BROKER_POOL_LIMIT = 5                 # "max connections" xavfini kamaytirish
-CELERYD_PREFETCH_MULTIPLIER = 1              # Bir worker kamroq task oladi → lock kamroq
-CELERY_TASK_TRACK_STARTED = True
-
-# Clear prev config
-LOGGING_CONFIG = None
-
-# Get loglevel from env
-LOGLEVEL = os.getenv('DJANGO_LOGLEVEL', 'info').upper()
-
-logging.config.dictConfig({
-    'version': 1,
-    'disable_existing_loggers': False,
-    'formatters': {
-        'console': {
-            'format': '%(asctime)s %(levelname)s [%(name)s:%(lineno)s] %(module)s %(process)d %(thread)d %(message)s',
-        },
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'formatter': 'console',
-        },
-    },
-    'loggers': {
-        '': {
-            'level': LOGLEVEL,
-            'handlers': ['console', ],
-        },
-    },
-})
-
-WEBHOOK_URL = env.str("WEBHOOK_URL", "https://bot.zamonsher.icu")
-CELERY_WEBHOOK=env.str("CELERY_WEBHOOK","False")
-APPEND_SLASH = False
-
-# Single bot token from env
-BOT_TOKEN = env.str("BOT_TOKEN", default=None)
-FORCE_CHANNEL_USERNAME=env.str("FORCE_CHANNEL_USERNAME",default=None)
-
-
-# ELASTICSEARCH DSL SOZLAMALARI
-# ==============================================================================
-ELASTICSEARCH_DSL = {
-    'default': {
-        'hosts': env.str('ES_URL', 'http://multiparser_elastic:9200'),
-    },
-}
-
-ES_URL=env.str("ES_URL",default="http://multiparser_elastic:9200")
-ES_INDEX=env.str("ES_INDEX",default=None)
-
-# TIKA SERVER CONFIGURATION
-TIKA_URL = env.str("TIKA_URL", "http://multiparser_tika:9998")
-
-

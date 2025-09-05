@@ -1,10 +1,11 @@
 # 1-bosqich: Python 3.12-slim asosida boshlang'ich qolipni olish
-FROM python:3.12-slim as base
+FROM python:3.12-slim AS base
 
 # Paketlar ro'yxatini yangilash va kerakli kutubxonalarni o'rnatish
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     libpq-dev \
+    redis-tools \
     build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -18,11 +19,14 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/requirements/production.txt
 
 # 2-bosqich: Ishga tushirish uchun tayyor qolip
-FROM python:3.12-slim
+FROM python:3.12-slim AS final
 
 # Tika Server uchun Java'ni o'rnatish va netcat o'rnatish
-# YANGILANDI: Java versiyasi 17 dan 21 ga o'zgartirildi
-RUN apt-get update && apt-get install -y openjdk-21-jre-headless netcat-openbsd && apt-get clean
+RUN apt-get update && apt-get install -y \
+    openjdk-21-jre-headless \
+    netcat-openbsd \
+    redis-tools \
+    && apt-get clean
 
 # Zarur paketlarni avvalgi bosqichdan nusxalash
 COPY --from=base /usr/local/lib/python3.12/site-packages/ /usr/local/lib/python3.12/site-packages/

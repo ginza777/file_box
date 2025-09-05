@@ -12,10 +12,25 @@ from django.db import transaction
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from elasticsearch import Elasticsearch
+from redis import Redis
+from redis.exceptions import ConnectionError as RedisConnectionError
 from .models import Document
+from core.celery import app as celery_app
 
 # --- Logger ---
 logger = logging.getLogger(__name__)
+
+# --- Redis client ---
+redis_client = Redis(
+    host=settings.REDIS_HOST,
+    port=settings.REDIS_PORT,
+    db=settings.REDIS_DB,
+    decode_responses=True,
+    socket_connect_timeout=5,
+    socket_timeout=5,
+    retry_on_timeout=True,
+    retry_on_error=[RedisConnectionError]
+)
 
 # --- Elasticsearch client (Elasticsearch 8.x uchun) ---
 es_client = Elasticsearch(
@@ -24,6 +39,7 @@ es_client = Elasticsearch(
     retry_on_timeout=True,
     max_retries=5
 )
+
 
 # --- Retry session helper (HTTP so‘rovlar uchun) ---
 def make_retry_session(total=5, backoff=0.5, pool_connections=3, pool_maxsize=3):
@@ -54,13 +70,15 @@ tika.TikaClientOnly = True
 tika.TikaServerEndpoint = TIKA_URL
 tika.TikaJarPath = None  # Disable local Tika server
 
+
 @shared_task(
     bind=True,
     autoretry_for=(Exception,),
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
-    acks_late=True
+    acks_late=True,
+    rate_limit="60/m"
 )
 def parse_document_task(self, document_id):
     logger.info(f"[Parse] Starting for document {document_id}")
@@ -103,7 +121,6 @@ def parse_document_task(self, document_id):
     return str(document_id)
 
 
-
 # ======================
 # DOWNLOAD FILE
 # ======================
@@ -113,7 +130,8 @@ def parse_document_task(self, document_id):
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
-    acks_late=True
+    acks_late=True,
+    rate_limit="10/m"
 )
 def download_file_task(self, document_id):
     logger.info(f"[Download] Starting for document {document_id}")
@@ -159,7 +177,7 @@ def download_file_task(self, document_id):
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
-    acks_late=True
+    acks_late=True, rate_limit="60/m"
 )
 def index_document_task(self, document_id):
     logger.info(f"[Index] Starting for document {document_id}")
@@ -192,7 +210,6 @@ def index_document_task(self, document_id):
     Document.objects.filter(id=document_id).update(is_indexed=True)
     logger.info(f"[Index] Completed {document_id}")
     return str(document_id)
-
 
 
 # ======================
@@ -280,7 +297,7 @@ def send_telegram_task(self, document_id):
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
-    acks_late=True
+    acks_late=True,rate_limit="60/m"
 )
 def delete_local_file_task(self, document_id):
     logger.info(f"[Delete] Starting for document {document_id}")
@@ -314,15 +331,30 @@ def delete_local_file_task(self, document_id):
 # ======================
 # CHAIN RUNNER
 # ======================
+# Process document chain helper
 def process_document(document_id):
     """
     To'liq pipeline:
     Download -> Parse -> Index -> Telegram -> Delete
     """
-    return chain(
-        download_file_task.s(document_id),
-        parse_document_task.s(),
-        index_document_task.s(),
-        send_telegram_task.s(),
-        delete_local_file_task.s()
-    ).apply_async()
+    try:
+        task_chain = chain(
+            download_file_task.s(document_id),
+            parse_document_task.s(),
+            index_document_task.s(),
+            send_telegram_task.s(),
+            delete_local_file_task.s()
+        )
+        return task_chain.apply_async(
+            app=celery_app,
+            retry=True,
+            retry_policy={
+                'max_retries': 3,
+                'interval_start': 0,
+                'interval_step': 0.2,
+                'interval_max': 0.5,
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error scheduling task chain for document {document_id}: {e}")
+        raise
