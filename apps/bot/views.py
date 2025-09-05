@@ -148,20 +148,21 @@ async def main_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     print("search_mode: ", search_mode)
 
     # 🔎 Deep yoki normal qidiruv
+    # Build a combined query: boosted exact phrase matches first, then fuzzy/similar matches.
+    # Exact phrase has higher boost so will appear earlier in results; fuzzy clause ensures
+    # we still return similar documents when exact phrase not present.
     if search_mode == 'deep':
-        q = Q(
-            "multi_match",
-            query=text,
-            fields=["product_title^5", "product_slug^4", "content^3"],
-            fuzziness="AUTO"  # 🔑 O'xshashlikka yo'l qo'yadi
-        )
+        exact_fields = ["product_title^10", "product_slug^8", "content^6"]
+        fuzzy_fields = ["product_title^5", "product_slug^4", "content^3"]
     else:
-        q = Q(
-            "multi_match",
-            query=text,
-            fields=["product_title^5", "product_slug^4"],
-            fuzziness="AUTO"
-        )
+        exact_fields = ["product_title^10", "product_slug^8"]
+        fuzzy_fields = ["product_title^5", "product_slug^4"]
+
+    exact_clause = Q("multi_match", query=text, fields=exact_fields, type="phrase", boost=5)
+    fuzzy_clause = Q("multi_match", query=text, fields=fuzzy_fields, fuzziness="AUTO", boost=1)
+
+    # Combine: at least one should match; exact matches get higher score due to boost
+    q = Q('bool', should=[exact_clause, fuzzy_clause], minimum_should_match=1)
 
     s = DocumentDocument.search().query(q)
 
@@ -227,19 +228,17 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
 
     # 🔎 Deep yoki normal qidiruv
     if search_mode == 'deep':
-        q = Q(
-            "multi_match",
-            query=query_text,
-            fields=["product_title^5", "product_slug^4", "content^3"],
-            fuzziness="AUTO"  # 🔑 O'xshashlikka yo'l qo'yadi
-        )
+        exact_fields = ["product_title^10", "product_slug^8", "content^6"]
+        fuzzy_fields = ["product_title^5", "product_slug^4", "content^3"]
     else:
-        q = Q(
-            "multi_match",
-            query=query_text,
-            fields=["product_title^5", "product_slug^4"],
-            fuzziness="AUTO"
-        )
+        exact_fields = ["product_title^10", "product_slug^8"]
+        fuzzy_fields = ["product_title^5", "product_slug^4"]
+
+    exact_clause = Q("multi_match", query=query_text, fields=exact_fields, type="phrase", boost=5)
+    fuzzy_clause = Q("multi_match", query=query_text, fields=fuzzy_fields, fuzziness="AUTO", boost=1)
+
+    # Combine: at least one should match; exact matches get higher score due to boost
+    q = Q('bool', should=[exact_clause, fuzzy_clause], minimum_should_match=1)
 
     s = DocumentDocument.search().query(q)
 
